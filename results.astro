@@ -1,0 +1,81 @@
+---
+// Ports renderMyResults()/loadMyResults() for the `student` role only —
+// the same function also serves `pin_viewer` in the old app via a
+// separate branch (no Supabase Auth session, server-side Edge Function
+// payload instead); that branch belongs to the PIN-based public result
+// lookup feature (its own Feature Checklist row), not this screen.
+// Same scope note as Parent Results (Phase 3c): the full printable
+// result sheet (buildResultSheet — ranking, comments, signatures, QR
+// PIN, PDF) is shared across parent/student/staff and deferred as its
+// own item rather than duplicated a third time here.
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import Card from '../../components/ui/Card';
+import Table from '../../components/ui/Table';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+type Result = { subject_name: string; total: number | null; term: string; session: string };
+const { data } = await supabase
+  .from('results')
+  .select('subject_name, total, term, session')
+  .eq('student_id', auth.userId)
+  .order('subject_name');
+const allResults: Result[] = data ?? [];
+
+const groupsMap = new Map<string, { term: string; session: string; results: Result[] }>();
+for (const r of allResults) {
+  const k = `${r.session}|${r.term}`;
+  if (!groupsMap.has(k)) groupsMap.set(k, { term: r.term, session: r.session, results: [] });
+  groupsMap.get(k)!.results.push(r);
+}
+const sortedGroups = [...groupsMap.values()].sort((a, b) => (b.session + b.term).localeCompare(a.session + a.term));
+
+const reqKey = Astro.url.searchParams.get('term');
+const activeGroup = sortedGroups.find((g) => `${g.session}|${g.term}` === reqKey) ?? sortedGroups[0] ?? null;
+const grand = activeGroup ? activeGroup.results.reduce((s, r) => s + (r.total || 0), 0) : 0;
+const avg = activeGroup && activeGroup.results.length ? (grand / activeGroup.results.length).toFixed(1) : '0';
+---
+<StudentLayout title="My Results" activePath="/student/results">
+  {!sortedGroups.length ? (
+    <Card><p class="text-center text-brand-brown-light py-8">No published results yet.</p></Card>
+  ) : (
+    <>
+      <div class="flex gap-2 flex-wrap items-center mb-4">
+        {sortedGroups.map((g) => (
+          <a
+            href={`/student/results?term=${g.session}|${g.term}`}
+            class:list={[
+              'px-3 py-1 rounded-md text-xs font-medium border',
+              activeGroup === g ? 'bg-brand-brown text-white border-brand-brown' : 'bg-white border-brand-cream-dark',
+            ]}
+          >
+            {g.term} &middot; {g.session}
+          </a>
+        ))}
+      </div>
+      {activeGroup && (
+        <Card title={`${activeGroup.term} — ${activeGroup.session}`}>
+          <Table
+            columns={[
+              { key: 'subject_name', header: 'Subject' },
+              { key: 'total', header: 'Score' },
+            ]}
+            rows={activeGroup.results}
+            getRowKey={(r: Result) => r.subject_name}
+            emptyMessage="No scores in this term."
+          />
+          <p class="text-sm font-semibold text-brand-brown mt-3">Term average: {avg}%</p>
+        </Card>
+      )}
+    </>
+  )}
+</StudentLayout>

@@ -1,0 +1,64 @@
+---
+// Ports renderMyFees(). Invoice/receipt PDF downloads
+// (studentDownloadInvoice/studentDownloadReceipt) and the Pay modal
+// (showStudentPayModal → Paystack) are TODO — same jsPDF/Paystack
+// dependencies flagged since Phase 1 and already built once for
+// Admissions (Phase 3b); wiring here is a follow-up, not a re-design.
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import Card from '../../components/ui/Card';
+import Table from '../../components/ui/Table';
+import Badge from '../../components/ui/Badge';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+type Fee = { id: string; amount: number; amount_paid: number | null; status: string; fee_type: string | null; term: string | null; session: string | null };
+const { data } = await supabase
+  .from('fee_payments')
+  .select('id, amount, amount_paid, status, fee_type, term, session')
+  .eq('student_id', auth.userId)
+  .order('created_at', { ascending: false });
+const fees: Fee[] = data ?? [];
+
+const totalDue = fees.reduce((s, f) => s + (f.amount || 0), 0);
+const totalPaid = fees.reduce((s, f) => s + (f.amount_paid || 0), 0);
+const totalBal = totalDue - totalPaid;
+const fmtNaira = (n: number) => '₦' + n.toLocaleString();
+---
+<StudentLayout title="My Fees & Payments" activePath="/student/fees">
+  {!fees.length ? (
+    <Card><p class="text-center text-brand-brown-light py-8">No invoices have been issued yet. Contact the school bursary for details.</p></Card>
+  ) : (
+    <>
+      <div class="grid gap-4 mb-5" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+        <Card><div class="text-xs text-brand-brown-light mb-1">Total Invoiced</div><div class="text-xl font-bold">{fmtNaira(totalDue)}</div></Card>
+        <Card><div class="text-xs text-brand-brown-light mb-1">Amount Paid</div><div class="text-xl font-bold text-success-700">{fmtNaira(totalPaid)}</div></Card>
+        <Card><div class="text-xs text-brand-brown-light mb-1">Balance Due</div><div class:list={['text-xl font-bold', totalBal > 0 ? 'text-danger-700' : 'text-success-700']}>{fmtNaira(totalBal)}</div></Card>
+      </div>
+      <Card title="Fee Invoices">
+        <Table
+          columns={[
+            { key: 'fee_type', header: 'Fee Type', render: (f: Fee) => f.fee_type || 'School Fee' },
+            { key: 'term', header: 'Term/Session', render: (f: Fee) => `${f.term || '—'} / ${f.session || '—'}` },
+            { key: 'amount', header: 'Invoice', render: (f: Fee) => fmtNaira(f.amount || 0) },
+            { key: 'paid', header: 'Paid', render: (f: Fee) => fmtNaira(f.amount_paid || 0) },
+            { key: 'balance', header: 'Balance', render: (f: Fee) => fmtNaira((f.amount || 0) - (f.amount_paid || 0)) },
+            { key: 'status', header: 'Status', render: (f: Fee) => <Badge tone={f.status === 'paid' ? 'success' : 'warning'}>{f.status === 'paid' ? 'Paid' : 'Pending'}</Badge> },
+          ]}
+          rows={fees}
+          getRowKey={(f: Fee) => f.id}
+          emptyMessage="No invoices yet."
+        />
+      </Card>
+      <!-- TODO: invoice/receipt PDF downloads, Pay Now (Paystack) — see note above. -->
+    </>
+  )}
+</StudentLayout>

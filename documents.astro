@@ -1,0 +1,76 @@
+---
+// Ports renderParentDocuments(). PDF generation itself
+// (parentDownloadResultPDF, downloadAdmissionLetterPDF) is TODO — see
+// note below; this pass lists what's downloadable, matching the old
+// screen's inventory logic (one card per term with results, plus an
+// admission letter card if an admissions row matches the child by name).
+import ParentLayout from '../../layouts/ParentLayout.astro';
+import Card from '../../components/ui/Card';
+import ChildSwitcher from '../../components/parent/ChildSwitcher.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+import { getSiblings, resolveActiveChild } from '../../lib/parent';
+
+const auth = await checkAuth(Astro.cookies, ['parent']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const siblings = await getSiblings(supabase, auth.userId);
+const child = resolveActiveChild(siblings, Astro.url.searchParams.get('child'));
+
+let terms: string[] = [];
+let hasAdmission = false;
+if (child) {
+  const { data: results } = await supabase.from('results').select('term, session').eq('student_id', child.id);
+  terms = [...new Set((results ?? []).map((r) => `${r.term}|${r.session}`))];
+  const { data: adm } = await supabase.from('admissions').select('id').eq('full_name', child.full_name).limit(1);
+  hasAdmission = !!adm?.length;
+}
+---
+<ParentLayout title="Documents & Files" activePath="/parent/documents">
+  {!child ? (
+    <Card><p class="text-center text-brand-brown-light py-8">No children linked to your account.</p></Card>
+  ) : (
+    <>
+      <ChildSwitcher siblings={siblings} activeId={child.id} basePath="/parent/documents" />
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));">
+        {terms.map((t) => {
+          const [term, sess] = t.split('|');
+          return (
+            <Card className="text-center">
+              <div class="font-bold text-brand-brown mb-1">Result Sheet</div>
+              <div class="text-xs text-brand-brown-light mb-3">{term} — {sess}</div>
+              <span class="inline-block px-3 py-1.5 rounded-md border border-brand-cream-dark text-sm text-brand-brown-light w-full">
+                Download PDF (pending Results PDF pass)
+              </span>
+            </Card>
+          );
+        })}
+        {hasAdmission && (
+          <Card className="text-center">
+            <div class="font-bold text-brand-brown mb-1">Admission Letter</div>
+            <div class="text-xs text-brand-brown-light mb-3">Official Admission Document</div>
+            <span class="inline-block px-3 py-1.5 rounded-md border border-brand-cream-dark text-sm text-brand-brown-light w-full">
+              Download (pending PDF pass)
+            </span>
+          </Card>
+        )}
+        {!terms.length && !hasAdmission && (
+          <p class="text-brand-brown-light col-span-full text-center py-8">No documents available yet.</p>
+        )}
+      </div>
+      <!--
+        TODO: wire both buttons to real PDF generation once jsPDF is set
+        up (Section 5's jsPDF row) — parentDownloadResultPDF() and
+        downloadAdmissionLetterPDF() in the old app. Left as disabled-look
+        placeholders rather than dead onclick handlers so nothing appears
+        to work when it doesn't.
+      -->
+    </>
+  )}
+</ParentLayout>

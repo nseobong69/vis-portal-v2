@@ -1,0 +1,82 @@
+---
+// Ports the exam-listing half of renderStudentExams() — the "which
+// exams can I see and are they open" logic. "Start Exam" now goes to a
+// real per-exam route (./exams/[id].astro) that runs the actual
+// question-by-question exam, timed, with access-code gating,
+// server-side grading, tab-switch/violation tracking, and invigilator
+// PIN override (see that file + api/student/exams/*). Still NOT
+// ported: camera/face verification and the freeze-frame/noise/intruder
+// detection built on it (cbt_snapshots) — that depends on face-api.js +
+// live camera capture and remains a separate, larger migration item.
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import Card from '../../components/ui/Card';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: student } = await supabase.from('students').select('class_id').eq('id', auth.userId).single();
+
+type Exam = {
+  id: string;
+  title: string;
+  subject_name: string | null;
+  duration_minutes: number | null;
+  total_questions: number | null;
+  start_at: string | null;
+  end_at: string | null;
+  allowed_students: string[] | null;
+};
+let visible: Exam[] = [];
+let submittedIds = new Set<string>();
+
+if (student?.class_id) {
+  const now = new Date();
+  const [examsRes, subsRes] = await Promise.all([
+    supabase.from('cbt_exams').select('id, title, subject_name, duration_minutes, total_questions, start_at, end_at, allowed_students').eq('class_id', student.class_id).eq('status', 'active'),
+    supabase.from('cbt_submissions').select('exam_id').eq('student_id', auth.userId),
+  ]);
+  submittedIds = new Set((subsRes.data ?? []).map((s) => s.exam_id));
+  visible = (examsRes.data ?? []).filter((e) => {
+    if (e.start_at && new Date(e.start_at) > now) return false;
+    if (e.end_at && new Date(e.end_at) < now) return false;
+    if (e.allowed_students?.length && !e.allowed_students.includes(auth.userId)) return false;
+    return true;
+  });
+}
+---
+<StudentLayout title="Available Exams" activePath="/student/exams">
+  {!student?.class_id ? (
+    <Card><p class="text-center text-brand-brown-light py-8">You are not assigned to a class. Contact admin.</p></Card>
+  ) : !visible.length ? (
+    <Card><p class="text-center text-brand-brown-light py-8">No active exams right now.</p></Card>
+  ) : (
+    <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));">
+      {visible.map((e) => {
+        const done = submittedIds.has(e.id);
+        return (
+          <Card className={done ? 'opacity-80' : ''}>
+            <div class="font-bold text-brand-brown mb-2">{e.title}</div>
+            <div class="text-xs text-brand-brown-light mb-1">{e.subject_name || '—'}</div>
+            <div class="text-xs text-brand-brown-light mb-1">{e.duration_minutes} minutes</div>
+            <div class="text-xs text-brand-brown-light mb-3">{e.total_questions} questions</div>
+            {done ? (
+              <div class="flex items-center justify-center gap-2 py-2 rounded-md bg-success-soft text-success-700 text-sm font-semibold">Submitted — No Retake</div>
+            ) : (
+              <a href={`/student/exams/${e.id}`} class="block text-center py-2 rounded-md bg-brand-brown text-white text-sm font-medium">
+                Start Exam
+              </a>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  )}
+</StudentLayout>

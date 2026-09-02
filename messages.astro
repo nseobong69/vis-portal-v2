@@ -1,0 +1,81 @@
+---
+// Ports renderParentMessages()/sendParentMessage(). Not scoped to a
+// single child — direct_messages is keyed to the parent (sender_id/
+// recipient_id = UP.id in the old app), so no ChildSwitcher here, same
+// as the old screen.
+import ParentLayout from '../../layouts/ParentLayout.astro';
+import Card from '../../components/ui/Card';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['parent']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+type Msg = { id: string; sender_name: string | null; subject: string | null; body: string; created_at: string };
+const { data: msgs } = await supabase
+  .from('direct_messages')
+  .select('id, sender_name, subject, body, created_at')
+  .or(`sender_id.eq.${auth.userId},recipient_id.eq.${auth.userId}`)
+  .order('created_at', { ascending: false });
+---
+<ParentLayout title="Messages" activePath="/parent/messages">
+  <div class="flex gap-4 flex-wrap items-start">
+    <div class="flex-1 min-w-[260px]">
+      <Card title="New Message" className="mb-4">
+        <!--
+          TODO: this is a static form pointing at the send API below —
+          the old app's inline onclick="sendParentMessage()" becomes a
+          real POST to /api/parent/messages/send once a client:load
+          island wires up the fetch + toast/redirect-back UX. Submitting
+          via a plain HTML form is intentionally avoided per the React
+          component guidance (no <form> tags) — this will need a small
+          client-side script or an island in the next pass.
+        -->
+        <form method="POST" action="/api/parent/messages/send" class="flex flex-col gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-brand-brown-light mb-1">To</label>
+            <select name="to" class="w-full border border-brand-cream-dark rounded-md px-3 py-2 text-sm">
+              <option value="admin">School Admin</option>
+              <option value="teacher">Class Teacher</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-brown-light mb-1">Subject</label>
+            <input name="subject" class="w-full border border-brand-cream-dark rounded-md px-3 py-2 text-sm" placeholder="Message subject" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-brown-light mb-1">Message</label>
+            <textarea name="body" rows="4" required class="w-full border border-brand-cream-dark rounded-md px-3 py-2 text-sm" placeholder="Type your message..."></textarea>
+          </div>
+          <button type="submit" class="w-full justify-center px-4 py-2 rounded-md bg-brand-brown text-white text-sm font-medium">Send Message</button>
+        </form>
+      </Card>
+    </div>
+    <div class="flex-[2] min-w-[280px]">
+      <Card title="Message History">
+        {msgs?.length ? (
+          <div class="flex flex-col gap-3 max-h-[500px] overflow-y-auto">
+            {msgs.map((m: Msg) => (
+              <div class="border-b border-brand-cream-dark pb-3">
+                <div class="flex justify-between mb-1">
+                  <span class="font-semibold text-brand-brown text-sm">{m.sender_name || 'School'}</span>
+                  <span class="text-xs text-brand-brown-light">{new Date(m.created_at).toLocaleDateString()}</span>
+                </div>
+                {m.subject && <div class="text-xs font-semibold text-brand-brown-light mb-1">{m.subject}</div>}
+                <div class="text-sm">{m.body}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p class="text-center text-brand-brown-light py-8">No messages yet.</p>
+        )}
+      </Card>
+    </div>
+  </div>
+</ParentLayout>

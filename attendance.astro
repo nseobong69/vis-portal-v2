@@ -1,0 +1,92 @@
+---
+// Real, server-served route at /staff/attendance — hitting this URL
+// directly in a fresh tab returns THIS file's actual HTML from the
+// server (Astro's file-based routing + output:'server', see
+// astro.config.mjs). No client-side router is involved in getting here.
+import StaffLayout from '../../layouts/StaffLayout.astro';
+import { checkAuth, createServerSupabase } from '../../lib/auth';
+import { createServerSupabase as sb } from '../../lib/supabase';
+import Card from '../../components/ui/Card';
+import Table from '../../components/ui/Table';
+
+// ── Step 1: server-side auth + role check, BEFORE any data is fetched ──
+// Roles allowed on this screen, per the Feature Checklist (Section 2.2,
+// row 17: Attendance) — matches MENUS in the old app for
+// super_admin/admin/proprietor/head_teacher/principal/teacher/
+// subject_teacher. Parent has its own separate route
+// (/parent/attendance, not built yet in this scaffold) since it renders
+// via renderParentAttendance, a different screen with read-only scope.
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+  'teacher', 'subject_teacher',
+]);
+
+if (auth.status === 'unauthenticated') {
+  // Real server-side redirect to login. No attendance data is fetched or
+  // rendered below this point — nothing leaks before the redirect fires.
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  // Real 403 response, not the data, not a silent redirect.
+  return Astro.redirect('/403');
+}
+
+// ── Step 2: only now, with a confirmed authorized user, fetch real data ──
+const supabase = sb(Astro.cookies);
+
+// TODO(Phase 1 real session): port the exact query shape from the old
+// app's renderAttendance() (attendance_records / attendance_week_logs /
+// teacher_attendance_prefs / school_day_status — Section 2.2 row 17).
+// This is a placeholder query proving the route + auth pattern, not the
+// full ported business logic — Phase 3's "preserve exact business logic"
+// rule applies once this becomes a real migration, not a scaffold demo.
+const today = new Date().toISOString().slice(0, 10);
+const { data: records, error } = await supabase
+  .from('attendance_records')
+  .select('id, student_id, status, date')
+  .eq('date', today)
+  .limit(50);
+
+---
+<StaffLayout title="Attendance">
+  <!--
+    Card and Table are rendered here WITHOUT a client:* directive — they
+    have no interactive state yet, so Astro renders them to static HTML
+    server-side only (no hydration payload). Phase 3's daily-marking UI
+    will need client:load once it adds real interactivity (see TODO
+    below); a render-prop table like this can't safely take client:load
+    as-is because functions aren't serializable for hydration.
+  -->
+  <Card title={`Attendance — ${today}`}>
+    <p class="text-sm text-brand-brown-light mb-4">
+      Signed in as role: <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+    </p>
+
+    {error && (
+      <p role="alert" class="text-danger-700 text-sm mb-3">
+        Could not load attendance: {error.message}
+      </p>
+    )}
+
+    <Table
+      columns={[
+        { key: 'student_id', header: 'Student ID' },
+        { key: 'status', header: 'Status' },
+      ]}
+      rows={records ?? []}
+      getRowKey={(r: { id: string }) => r.id}
+      emptyMessage="No attendance records for today yet."
+    />
+  </Card>
+
+  <!--
+    TODO(Phase 3 migration, not Phase 2 restyle):
+    - Daily marking UI (interactive island — needs client-side state)
+    - Weekly/term register view
+    - PDF export (port jsPDF logic from old app, see Section 5's jsPDF row)
+    - Excel export (port SheetJS logic, see Section 5's SheetJS row)
+    Phase 2's job was restyling this slice with the component library —
+    business logic/export features stay TODO per Phase 3's session prompt.
+  -->
+</StaffLayout>
+
