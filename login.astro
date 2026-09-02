@@ -1,0 +1,17 @@
+---
+// Placeholder login page. TODO(Phase 1 real session): port the old app's
+// auth flow, including MFA/TOTP (Feature Checklist Section 2, "MFA/TOTP
+// login" row) — this stub has no real form wiring yet.
+const next = Astro.url.searchParams.get('next') ?? '/';
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Log in · VIS Portal</title>
+</head>
+<body>
+  <h1>Log in</h1>
+  <p>TODO: real login form. Will redirect to <code>{next}</code> after auth.</p>
+</body>
+</html>

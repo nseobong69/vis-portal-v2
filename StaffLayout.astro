@@ -1,0 +1,38 @@
+---
+// Shell for teacher/subject_teacher screens. Wraps pages — does NOT
+// replace the real per-route auth check, which happens in each page's
+// own frontmatter before this layout is even reached (Section 3).
+// Phase 2: now pulls in the design token / Tailwind stylesheet and
+// applies the shell (dark nav) + brand (cream body) tokens.
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} · VIS Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="min-h-screen bg-brand-cream font-body text-body">
+  <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
+    <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
+        <span class="font-heading font-bold text-brand-gold text-[15px]">VIS Portal</span>
+      </div>
+      <!-- TODO(Phase 4): real role-based nav, see Section 4 Phase 4 groupings -->
+      <span class="text-shell-muted text-xs">{title}</span>
+    </div>
+  </nav>
+  <main class="max-w-[1400px] mx-auto px-5 py-8">
+    <slot />
+  </main>
+</body>
+</html>

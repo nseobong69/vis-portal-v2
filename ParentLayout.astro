@@ -1,0 +1,63 @@
+---
+// Shell for the 8 parent-portal screens (Dashboard, Results, Attendance,
+// Fees, Messages, Documents, Test History, Profile — Section 2.2's
+// "Parent portal (multi-child view)" row). Does NOT replace the real
+// per-route auth check, which happens in each page's own frontmatter
+// before this layout is reached (Section 3) — this is presentation only.
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  activePath: string;
+}
+const { title, activePath } = Astro.props;
+
+const navItems = [
+  { href: '/parent/dashboard', label: 'Dashboard' },
+  { href: '/parent/results', label: 'Results' },
+  { href: '/parent/attendance', label: 'Attendance' },
+  { href: '/parent/fees', label: 'Fees' },
+  { href: '/parent/messages', label: 'Messages' },
+  { href: '/parent/documents', label: 'Documents' },
+  { href: '/parent/test-history', label: 'Test History' },
+  { href: '/parent/profile', label: 'Profile' },
+];
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} · VIS Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="min-h-screen bg-brand-cream font-body text-body">
+  <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
+    <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between gap-4 overflow-x-auto">
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
+        <span class="font-heading font-bold text-brand-gold text-[15px]">VIS Portal</span>
+      </div>
+      <div class="flex items-center gap-1 text-xs shrink-0">
+        {navItems.map((item) => (
+          <a
+            href={item.href}
+            class:list={[
+              'px-3 py-1.5 rounded-md transition-colors whitespace-nowrap',
+              activePath === item.href
+                ? 'bg-white/10 text-brand-gold font-semibold'
+                : 'text-shell-muted hover:text-shell-text',
+            ]}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-[1400px] mx-auto px-5 py-8">
+    <slot />
+  </main>
+</body>
+</html>
