@@ -56,3 +56,25 @@ export async function checkAuth(
 
   return { status: 'authorized', role, userId: user.id };
 }
+
+/**
+ * Call this wherever checkAuth returns 'unauthenticated'.
+ * Redirects to /login (the real route) and passes the current page
+ * as ?next= so the user lands back here after a successful login.
+ *
+ * FIX 1: was redirecting to /admin/login which does not exist — the real
+ *         login page is /login.
+ * FIX 2: without ?next= the login page defaulted to '/' after login,
+ *         sending admins to the public homepage every time.
+ *
+ * Usage (in any protected page frontmatter):
+ *   if (result.status === 'unauthenticated') return loginRedirect(Astro.url);
+ *   if (result.status === 'unauthorized')    return Astro.redirect('/403');
+ */
+export function loginRedirect(url: URL): Response {
+  const next = encodeURIComponent(url.pathname + url.search);
+  return new Response(null, {
+    status: 302,
+    headers: { Location: `/login?next=${next}` },
+  });
+}
