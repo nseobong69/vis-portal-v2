@@ -12,4 +12,16 @@ export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'standalone' }),
   integrations: [react(), tailwind()],
+  vite: {
+    build: {
+      // FIX: Astro/Vite's default per-page CSS code-splitting was linking
+      // pages to the WRONG chunk (e.g. /admin/dashboard was served
+      // "403.[hash].css" and "academics.[hash].css" instead of its own
+      // styles), leaving every Tailwind class in the markup with no
+      // matching CSS. Disabling cssCodeSplit bundles all Tailwind output
+      // into a single shared stylesheet linked on every page, so no page
+      // can end up pointing at another page's (or no) CSS chunk.
+      cssCodeSplit: false,
+    },
+  },
 });
