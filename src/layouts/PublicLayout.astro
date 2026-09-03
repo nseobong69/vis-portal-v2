@@ -1,0 +1,53 @@
+---
+// Shell for PUBLIC pages — homepage, /about, /academics-overview,
+// /cbt-info, /student-life. No auth check here on purpose: these are
+// the unauthenticated public site (Section 3 still requires them to be
+// real server-rendered routes, just not gated).
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = 'Victorious International Schools — Okpok-Ikpa Okoyong, Cross River State, Nigeria.' } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content={description} />
+  <title>{title} · Victorious International Schools</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!--
+    AdSense — same publisher ID as the old app (index.html line 136).
+    Ad slot ID below is carried over as-is ("0000000000"); the old app
+    never configured a real slot either (see Phase 3 homepage notes) —
+    flagged for you to confirm/replace before this goes live with ads on.
+  -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7485758874129054" crossorigin="anonymous"></script>
+</head>
+<body class="bg-white font-body text-body">
+  <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
+    <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
+        <span class="font-heading font-bold text-brand-gold text-[15px]">Victorious International Schools</span>
+      </a>
+      <div class="flex items-center gap-2">
+        <a href="/about" class="text-shell-muted hover:text-brand-gold text-sm px-2">About</a>
+        <a href="/academics-overview" class="text-shell-muted hover:text-brand-gold text-sm px-2">Academics</a>
+        <a href="/student-life" class="text-shell-muted hover:text-brand-gold text-sm px-2 hidden sm:inline">Student Life</a>
+        <a href="/cbt-info" class="text-shell-muted hover:text-brand-gold text-sm px-2 hidden sm:inline">CBT Exams</a>
+        <a href="/login" class="ml-2 bg-brand-gold text-shell-obsidian text-sm font-semibold px-3 py-1.5 rounded-md">
+          Portal Login
+        </a>
+      </div>
+    </div>
+  </nav>
+  <main>
+    <slot />
+  </main>
+</body>
+</html>
