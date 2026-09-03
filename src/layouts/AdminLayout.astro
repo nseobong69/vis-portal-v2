@@ -1,4 +1,20 @@
 ---
+// Admin Portal shell — the admin-tier slice of MENUS (Section 4 Phase 4
+// grouping 1: super_admin, admin, proprietor, head_teacher, principal).
+// Wraps pages — does NOT replace the real per-route auth check, which
+// happens in each page's own frontmatter before this layout is even
+// reached (Section 3). Deliberately reuses the StaffLayout/StudentLayout/
+// ParentLayout visual shell rather than inventing a new one.
+//
+// `superAdminOnly` items are shown to every admin-tier visitor (so the
+// nav doesn't silently look incomplete) but the routes themselves still
+// 403 a non-super_admin — matching the pattern the old app used for
+// School Settings (Section 2.2).
+//
+// All styling comes from tokens.css (via global.css) + the Tailwind
+// config that maps to it — no hardcoded hex values or duplicate :root
+// blocks here. Keep it that way; a second :root in this file is what
+// caused the color-drift bug previously.
 import '../styles/global.css';
 
 interface Props {
@@ -95,76 +111,62 @@ const navGroups = [
   <title>{title} · VIS Portal Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --brand-cream:     #FAF7F2;
-      --brand-gold:      #C9A84C;
-      --brand-gold-dark: #A07830;
-      --shell-obsidian:  #0F1117;
-      --shell-text:      #F0EDE8;
-      --shell-muted:     #8A8880;
-      --text-body:       #1A1A1A;
-      --font-body:       'Outfit', sans-serif;
-      --font-heading:    'Syne', sans-serif;
-      --shadow-gold:     0 2px 12px rgba(201,168,76,0.35);
-    }
-    #mobile-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 40;
-    }
-    #mobile-backdrop.open { display: block; }
-    #mobile-drawer {
-      position: fixed;
-      top: 0; left: 0; bottom: 0;
-      width: 260px;
-      background: var(--shell-obsidian);
-      color: var(--shell-text);
-      z-index: 50;
-      transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-    #mobile-drawer.open { transform: translateX(0); }
-  </style>
 </head>
 <body class="min-h-screen bg-brand-cream font-body text-body">
 
-  <div id="mobile-backdrop"></div>
+  <!-- Mobile drawer backdrop -->
+  <div
+    id="mobile-backdrop"
+    class="fixed inset-0 z-40 hidden bg-black/50 lg:hidden"
+  ></div>
 
-  <aside id="mobile-drawer">
-    <div style="display:flex;align-items:center;gap:8px;padding:0 20px;height:64px;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0;">
-      <div style="width:36px;height:36px;border-radius:6px;background:linear-gradient(135deg,var(--brand-gold),var(--brand-gold-dark));"></div>
-      <span style="font-family:var(--font-heading);font-weight:700;color:var(--brand-gold);font-size:15px;">VIS Admin</span>
-      <button id="close-drawer" style="margin-left:auto;background:none;border:none;color:var(--shell-muted);cursor:pointer;font-size:22px;">✕</button>
+  <!-- Mobile drawer -->
+  <aside
+    id="mobile-drawer"
+    class="fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col overflow-y-auto bg-shell-obsidian text-shell-text transition-transform duration-200 lg:hidden"
+  >
+    <div class="flex h-16 shrink-0 items-center gap-2 border-b border-white/10 px-5">
+      <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
+      <span class="font-heading font-bold text-brand-gold text-[15px]">VIS Admin</span>
+      <button
+        id="close-drawer"
+        aria-label="Close menu"
+        class="ml-auto border-none bg-transparent text-[22px] leading-none text-shell-muted"
+      >
+        &times;
+      </button>
     </div>
-    <nav style="padding:16px 12px;flex:1;">
+    <nav class="flex-1 space-y-5 px-3 py-4">
       {navGroups.map((group) => (
-        <div style="margin-bottom:20px;">
-          <p style="padding:0 8px;margin-bottom:4px;font-size:10px;font-family:var(--font-heading);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--shell-muted);">
+        <div>
+          <p class="px-2 mb-1 text-[10px] font-heading font-bold uppercase tracking-wider text-shell-muted">
             {group.label}
           </p>
-          {group.items.map((item) => (
-            <a
-              href={item.href}
-              style={`display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;font-size:13px;text-decoration:none;color:${activePath === item.href ? 'var(--brand-gold)' : 'var(--shell-muted)'};background:${activePath === item.href ? 'rgba(255,255,255,0.08)' : 'transparent'};font-weight:${activePath === item.href ? '600' : '400'};`}
-            >
-              <span>{item.label}</span>
-              {item.superAdminOnly && (
-                <span style="font-size:9px;padding:2px 4px;border-radius:3px;background:rgba(201,168,76,0.2);color:var(--brand-gold);">SA</span>
-              )}
-            </a>
-          ))}
+          <div class="space-y-0.5">
+            {group.items.map((item) => (
+              <a
+                href={item.href}
+                class:list={[
+                  'flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  activePath === item.href
+                    ? 'bg-white/10 text-brand-gold font-semibold'
+                    : 'text-shell-muted hover:text-shell-text',
+                ]}
+              >
+                <span>{item.label}</span>
+                {item.superAdminOnly && (
+                  <span class="text-[9px] px-1 py-0.5 rounded bg-brand-gold/20 text-brand-gold">SA</span>
+                )}
+              </a>
+            ))}
+          </div>
         </div>
       ))}
     </nav>
   </aside>
 
   <div class="flex">
+    <!-- Desktop sidebar -->
     <aside class="hidden lg:flex flex-col w-64 shrink-0 h-screen sticky top-0 bg-shell-obsidian text-shell-text border-r border-white/10 overflow-y-auto">
       <div class="flex items-center gap-2 px-5 h-16 shrink-0 border-b border-white/10">
         <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
@@ -200,12 +202,17 @@ const navGroups = [
     </aside>
 
     <div class="flex-1 min-w-0">
-      <nav class="lg:hidden bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
+      <!-- Mobile top bar -->
+      <nav class="lg:hidden bg-shell-obsidian text-shell-text sticky top-0 z-30 border-b border-white/10">
         <div class="px-5 h-16 flex items-center gap-3">
-          <button id="open-drawer" aria-label="Open menu" class="flex flex-col gap-[5px] p-1 -ml-1">
-            <span class="block w-5 h-0.5 bg-shell-text rounded"></span>
-            <span class="block w-5 h-0.5 bg-shell-text rounded"></span>
-            <span class="block w-5 h-0.5 bg-shell-text rounded"></span>
+          <button
+            id="open-drawer"
+            aria-label="Open menu"
+            class="-ml-1 flex flex-col gap-[5px] p-1"
+          >
+            <span class="block h-0.5 w-5 rounded bg-shell-text"></span>
+            <span class="block h-0.5 w-5 rounded bg-shell-text"></span>
+            <span class="block h-0.5 w-5 rounded bg-shell-text"></span>
           </button>
           <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
           <span class="font-heading font-bold text-brand-gold text-[15px]">VIS Admin</span>
@@ -229,13 +236,13 @@ const navGroups = [
     const backdrop = document.getElementById('mobile-backdrop');
 
     function openDrawer() {
-      drawer?.classList.add('open');
-      backdrop?.classList.add('open');
+      drawer?.classList.remove('-translate-x-full');
+      backdrop?.classList.remove('hidden');
       document.body.style.overflow = 'hidden';
     }
     function closeDrawer() {
-      drawer?.classList.remove('open');
-      backdrop?.classList.remove('open');
+      drawer?.classList.add('-translate-x-full');
+      backdrop?.classList.add('hidden');
       document.body.style.overflow = '';
     }
 
