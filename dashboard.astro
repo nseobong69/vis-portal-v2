@@ -1,18 +1,23 @@
 ---
-// Ports renderStudentDash(). Not ported in this pass: the live fee-status
-// check's 3-way color logic (Cleared/Partial/Pending across possibly
-// multiple invoices for the current session) and the exam-access-codes
-// card (cbt_student_codes — belongs with the full CBT exam-taking engine,
-// see /student/exams for that scope note). This shows the same
-// underlying signal — fee balance, class, notices, quick links — with
-// today's simpler paid/unpaid split, matching how Parent Dashboard
-// already summarizes fee balance.
-import StudentLayout from '../../layouts/StudentLayout.astro';
+// Staff/Teacher Portal, part 1 — ports renderTeacherDash()/
+// renderSubjectTeacherDash() as one real page with two variants keyed
+// off `auth.role`, per Section 4 Phase 4 grouping 2 ("Teaching staff
+// ... their dashboard should foreground today's classes and pending
+// attendance/results entry, not a full admin menu").
+//
+// Real this pass: My Classes / My Subjects counts (teacher_classes /
+// teacher_subjects), and the Attendance quick action (a real route).
+// NOT real yet, shown as disabled: Enter Scores, Manage CBT, Score
+// Sheet, Announcements, Attendance Report — those screens haven't
+// been migrated yet, so linking them would be a dead or fake link;
+// disabled + labelled "Coming soon" instead of silently omitted, so
+// the checklist gap stays visible rather than hidden.
+import StaffLayout from '../../layouts/StaffLayout.astro';
 import Card from '../../components/ui/Card';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['student']);
+const auth = await checkAuth(Astro.cookies, ['teacher', 'subject_teacher']);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -21,59 +26,60 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: student } = await supabase
-  .from('students')
-  .select('full_name, class_name, admission_number')
-  .eq('id', auth.userId)
-  .single();
+const isSubjectTeacher = auth.role === 'subject_teacher';
 
-const { data: fees } = await supabase
-  .from('fee_payments')
-  .select('amount, status')
-  .eq('student_id', auth.userId);
-const { data: notices } = await supabase
-  .from('announcements')
-  .select('title, created_at')
-  .order('created_at', { ascending: false })
-  .limit(5);
+const { count: classCount } = await supabase
+  .from('teacher_classes')
+  .select('id', { count: 'exact', head: true })
+  .eq('teacher_id', auth.userId);
 
-const balance = (fees ?? []).reduce((s, f) => s + (f.status === 'paid' ? 0 : f.amount || 0), 0);
+const { count: subjectCount } = await supabase
+  .from('teacher_subjects')
+  .select('id', { count: 'exact', head: true })
+  .eq('teacher_id', auth.userId);
+
+const quickActions = [
+  { label: 'Enter Scores', href: null, icon: '📝' },
+  isSubjectTeacher
+    ? { label: 'Score Sheet', href: null, icon: '📄' }
+    : { label: 'Mark Attendance', href: '/staff/attendance', icon: '✅' },
+  { label: isSubjectTeacher ? 'My CBT Exams' : 'Manage CBT', href: null, icon: '💻' },
+  { label: isSubjectTeacher ? 'Announcements' : 'Attendance Report', href: null, icon: isSubjectTeacher ? '📢' : '📊' },
+];
 ---
-<StudentLayout title="Student Dashboard" activePath="/student/dashboard">
-  <div class="rounded-[18px] p-6 mb-5 text-white" style="background:linear-gradient(135deg,#5D4037,#8D6E63);">
-    <div class="text-lg font-bold">{student?.full_name || '—'}</div>
-    <div class="text-xs opacity-80 mt-1">Admission: {student?.admission_number || '—'} &middot; Class: {student?.class_name || '—'}</div>
-  </div>
-
-  <div class="grid gap-4 mb-5" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));">
-    <Card><div class="text-xs text-brand-brown-light mb-1">My Class</div><div class="text-xl font-bold">{student?.class_name || '—'}</div></Card>
+<StaffLayout title="Dashboard" activePath="/staff/dashboard">
+  <div class="grid gap-4 mb-5" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
     <Card>
-      <div class="text-xs text-brand-brown-light mb-1">Fee Status</div>
-      <div class:list={['text-xl font-bold', balance ? 'text-danger-700' : 'text-success-700']}>
-        {balance ? `₦${balance.toLocaleString()} due` : 'Cleared'}
-      </div>
+      <div class="text-xs text-brand-brown-light mb-1">{isSubjectTeacher ? 'My Subjects' : 'My Classes'}</div>
+      <div class="text-xl font-bold text-brand-brown-dark">{isSubjectTeacher ? (subjectCount ?? 0) : (classCount ?? 0)}</div>
+    </Card>
+    <Card>
+      <div class="text-xs text-brand-brown-light mb-1">{isSubjectTeacher ? 'CBT Exams' : 'Results Pending'}</div>
+      <div class="text-xl font-bold text-brand-brown-dark">—</div>
     </Card>
   </div>
 
-  <div class="grid gap-4" style="grid-template-columns:1fr 1fr;">
-    <Card title="Quick Access">
-      <div class="flex flex-col gap-2">
-        <a href="/student/results" class="px-4 py-2 rounded-md bg-brand-brown text-white text-sm font-medium text-center">My Results</a>
-        <a href="/student/academics" class="px-4 py-2 rounded-md border border-brand-cream-dark text-sm font-medium text-center">Academics</a>
-        <a href="/student/exams" class="px-4 py-2 rounded-md border border-brand-cream-dark text-sm font-medium text-center">Take Exam</a>
-        <a href="/student/fees" class="px-4 py-2 rounded-md border border-brand-cream-dark text-sm font-medium text-center">Pay Fees</a>
-      </div>
-    </Card>
-    <Card title="Notice Board">
-      {notices?.length ? (
-        <div class="flex flex-col gap-2">
-          {notices.map((n: { title: string; created_at: string }) => (
-            <div class="text-sm text-brand-brown-light border-b border-brand-cream-dark pb-2">📢 {n.title}</div>
-          ))}
-        </div>
-      ) : (
-        <p class="text-sm text-brand-brown-light">No notices.</p>
+  <Card title="Quick Actions">
+    <div class="flex flex-col gap-2 max-w-sm">
+      {quickActions.map((a) =>
+        a.href ? (
+          <a
+            href={a.href}
+            class="px-4 py-2 rounded-md bg-brand-brown text-white text-sm font-medium text-center"
+          >
+            {a.icon} {a.label}
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            title="Not migrated to the new portal yet"
+            class="px-4 py-2 rounded-md border border-brand-cream-dark text-sm font-medium text-center text-brand-brown-light cursor-not-allowed opacity-60"
+          >
+            {a.icon} {a.label} <span class="text-[10px] uppercase tracking-wide">(soon)</span>
+          </button>
+        )
       )}
-    </Card>
-  </div>
-</StudentLayout>
+    </div>
+  </Card>
+</StaffLayout>

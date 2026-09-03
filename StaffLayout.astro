@@ -2,14 +2,23 @@
 // Shell for teacher/subject_teacher screens. Wraps pages — does NOT
 // replace the real per-route auth check, which happens in each page's
 // own frontmatter before this layout is even reached (Section 3).
-// Phase 2: now pulls in the design token / Tailwind stylesheet and
-// applies the shell (dark nav) + brand (cream body) tokens.
+// Staff/Teacher Portal, part 1: real nav (was a placeholder title-only
+// bar) matching StudentLayout/ParentLayout's activePath pattern. Items
+// here are the teacher/subject_teacher slice of MENUS — admin-tier's
+// wider menu (Section 4 Phase 4 grouping 1) is a separate layout, not
+// yet built.
 import '../styles/global.css';
 
 interface Props {
   title: string;
+  activePath: string;
 }
-const { title } = Astro.props;
+const { title, activePath } = Astro.props;
+
+const navItems = [
+  { href: '/staff/dashboard', label: 'Dashboard' },
+  { href: '/staff/attendance', label: 'Attendance' },
+];
 ---
 <!doctype html>
 <html lang="en">
@@ -22,13 +31,26 @@ const { title } = Astro.props;
 </head>
 <body class="min-h-screen bg-brand-cream font-body text-body">
   <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
-    <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-2">
+    <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between gap-4 overflow-x-auto">
+      <div class="flex items-center gap-2 shrink-0">
         <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
         <span class="font-heading font-bold text-brand-gold text-[15px]">VIS Portal</span>
       </div>
-      <!-- TODO(Phase 4): real role-based nav, see Section 4 Phase 4 groupings -->
-      <span class="text-shell-muted text-xs">{title}</span>
+      <div class="flex items-center gap-1 text-xs shrink-0">
+        {navItems.map((item) => (
+          <a
+            href={item.href}
+            class:list={[
+              'px-3 py-1.5 rounded-md transition-colors whitespace-nowrap',
+              activePath === item.href
+                ? 'bg-white/10 text-brand-gold font-semibold'
+                : 'text-shell-muted hover:text-shell-text',
+            ]}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
     </div>
   </nav>
   <main class="max-w-[1400px] mx-auto px-5 py-8">
