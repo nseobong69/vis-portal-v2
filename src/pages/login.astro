@@ -1,5 +1,5 @@
 ---
-const next = Astro.url.searchParams.get('next') ?? '/';
+const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
 ---
 <!doctype html>
 <html lang="en">
@@ -43,7 +43,13 @@ const next = Astro.url.searchParams.get('next') ?? '/';
           errorEl.textContent = json.error || 'Login failed.';
           return;
         }
-        window.location.href = next;
+        // FIX: validate that next is a relative path to prevent open-redirect
+        // attacks (e.g. ?next=https://evil.com). Also default to
+        // /admin/dashboard instead of '/' so admins land somewhere useful.
+        const safeNext = (typeof next === 'string' && next.startsWith('/'))
+          ? next
+          : '/admin/dashboard';
+        window.location.href = safeNext;
       } catch {
         errorEl.textContent = 'Network error — could not reach the server.';
       }
