@@ -1,1 +1,58 @@
+---
+// Admin Portal — Payment Tracking
+// Now wired: verify a Paystack reference server-side (never trust the
+// client's claim) and record it into fee_payments, via
+// /api/admin/fees/verify-and-record.ts. Remita path still deliberately
+// dropped per Section 5. Manual/cash payment entry (no Paystack
+// reference) not ported — every recorded row here has been through
+// Paystack's own verify endpoint.
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import Card from '../../../components/ui/Card';
+import AdminCrudList from '../../../components/admin/AdminCrudList';
+import FeeVerifyForm from '../../../components/admin/FeeVerifyForm';
+import { checkAuth } from '../../../lib/auth';
+import { createServerSupabase } from '../../../lib/supabase';
 
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: rows, error } = await supabase
+  .from('fee_payments')
+  .select('*')
+  .limit(50);
+
+const columns = [
+  { key: 'student_id', header: 'Student' },
+  { key: 'amount', header: 'Amount' },
+  { key: 'status', header: 'Status' },
+  { key: 'reference', header: 'Reference' },
+];
+---
+<AdminLayout title="Payment Tracking" activePath="/admin/fees/payments" role={auth.role}>
+  <Card title="Verify a Paystack Payment">
+    <FeeVerifyForm client:load />
+  </Card>
+  <div class="h-4"></div>
+  <Card title="Payment Tracking">
+    {error && (
+      <p class="text-sm text-red-600 mb-3">
+        Query against `fee_payments` failed — table/columns not verified against the live
+        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
+      </p>
+    )}
+    <AdminCrudList
+      client:load
+      table="fee_payments"
+      columns={columns}
+      formFields={[]}
+      initialRows={(rows ?? []) as any[]}
+    />
+  </Card>
+</AdminLayout>
