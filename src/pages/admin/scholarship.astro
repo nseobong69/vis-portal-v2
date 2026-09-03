@@ -1,6 +1,6 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Scholarship
+// Flagged in Phase 0 as data-source-unconfirmed (Section 2.4) — this placeholder queries `students` only until the real scholarship table is confirmed.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -18,20 +18,20 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('students')
   .select('*')
   .limit(25);
 
 const columns = [
-  { key: 'title', header: 'Title' },
+  { key: 'full_name', header: 'Student' },
   { key: 'class_id', header: 'Class' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Scholarship" activePath="/admin/scholarship" role={auth.role}>
+  <Card title="Scholarship">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `students` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

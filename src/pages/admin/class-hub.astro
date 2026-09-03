@@ -1,6 +1,6 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Class Hub
+// Overview index — links out to Students, Classes, Subjects, Staff below. Same table-of-tables landing pattern as the old app's Class Hub screen; the deep tab logic (Affective Traits, Publish Result, Clearance) already lives in staff/class-hub components from the Staff/Teacher Portal pass and is not re-derived here.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -18,20 +18,20 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('classes')
   .select('*')
   .limit(25);
 
 const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'name', header: 'Class' },
+  { key: 'arm', header: 'Arm' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Class Hub" activePath="/admin/class-hub" role={auth.role}>
+  <Card title="Class Hub">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `classes` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

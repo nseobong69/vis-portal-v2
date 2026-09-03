@@ -1,6 +1,6 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Admissions (Admin)
+// The public-facing admission wizard + CBT + Paystack flow is already real (AdmissionWizard.tsx, from the scaffold phase). This route is the admin-side review queue only, list view.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -18,20 +18,20 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('admissions')
   .select('*')
   .limit(25);
 
 const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'applicant_name', header: 'Applicant' },
+  { key: 'status', header: 'Status' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Admissions (Admin)" activePath="/admin/admissions" role={auth.role}>
+  <Card title="Admissions (Admin)">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `admissions` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

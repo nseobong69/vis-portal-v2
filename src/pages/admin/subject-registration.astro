@@ -1,6 +1,6 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Subject Registration
+// Per-student elective registration logic not ported — this is a placeholder against `subjects`, not the (unconfirmed) registration table itself.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -18,20 +18,20 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('subjects')
   .select('*')
   .limit(25);
 
 const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'name', header: 'Subject' },
+  { key: 'code', header: 'Code' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Subject Registration" activePath="/admin/subject-registration" role={auth.role}>
+  <Card title="Subject Registration">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `subjects` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

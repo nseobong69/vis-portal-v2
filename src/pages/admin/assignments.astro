@@ -1,6 +1,6 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Assignments
+// Create/grade flows not ported — list view only.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -18,20 +18,21 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('academic_assignments')
   .select('*')
   .limit(25);
 
 const columns = [
   { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'class_id', header: 'Class' },
+  { key: 'due_date', header: 'Due' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Assignments" activePath="/admin/assignments" role={auth.role}>
+  <Card title="Assignments">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `academic_assignments` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

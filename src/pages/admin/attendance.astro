@@ -1,6 +1,6 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Attendance (Admin Oversight)
+// The real marking/PDF/Excel-export logic lives in staff/attendance from the Staff/Teacher Portal phase (not yet built out past the week-panel shell either, per that phase's README). This route is the admin-tier cross-class view only.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -18,20 +18,22 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('attendance_week_logs')
   .select('*')
   .limit(25);
 
 const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'session', header: 'Session' },
+  { key: 'term', header: 'Term' },
+  { key: 'class_id', header: 'Class' },
+  { key: 'week_number', header: 'Week' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Attendance (Admin Oversight)" activePath="/admin/attendance" role={auth.role}>
+  <Card title="Attendance (Admin Oversight)">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `attendance_week_logs` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

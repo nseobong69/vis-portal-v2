@@ -1,9 +1,11 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Subjects
+// CRUD wired: add (AdminRecordForm) + delete, both through the
+// whitelisted /api/admin/records endpoint (Section: TABLE_FIELDS).
+// Edit-in-place is still not implemented — add + delete only.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import AdminCrudList from '../../components/admin/AdminCrudList';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
@@ -18,27 +20,33 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('subjects')
   .select('*')
-  .limit(25);
+  .limit(50);
 
 const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'name', header: 'Subject' },
+  { key: 'code', header: 'Code' }
+];
+const formFields = [
+  { key: 'name', label: 'Subject Name', type: 'text' },
+  { key: 'code', label: 'Code', type: 'text' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Subjects" activePath="/admin/subjects" role={auth.role}>
+  <Card title="Subjects">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `subjects` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}
-    <Table
+    <AdminCrudList
+      client:load
+      table="subjects"
       columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+      formFields={formFields}
+      initialRows={(rows ?? []) as any[]}
     />
   </Card>
 </AdminLayout>

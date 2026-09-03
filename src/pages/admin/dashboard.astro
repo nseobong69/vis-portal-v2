@@ -1,0 +1,61 @@
+---
+// Admin Portal — Dashboard
+// Section 4's admin-tier dashboard requirement: real routing/auth proven
+// here with genuine row-count queries against a handful of core tables
+// (students, classes, staff via profiles). Not ported: today's-classes /
+// pending-attendance-and-results widgets the Feature Checklist calls for
+// (those need the attendance/results shape confirmed first) and the
+// super_admin-only extra widgets mentioned in Section 4.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Card from '../../components/ui/Card';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+]);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+
+const counts = await Promise.all([
+  supabase.from('students').select('id', { count: 'exact', head: true }),
+  supabase.from('classes').select('id', { count: 'exact', head: true }),
+  supabase.from('profiles').select('id', { count: 'exact', head: true }),
+  supabase.from('fee_payments').select('id', { count: 'exact', head: true }),
+]);
+
+const stats = [
+  { label: 'Students', value: counts[0].count, error: !!counts[0].error },
+  { label: 'Classes', value: counts[1].count, error: !!counts[1].error },
+  { label: 'Staff/Profiles', value: counts[2].count, error: !!counts[2].error },
+  { label: 'Fee Payments', value: counts[3].count, error: !!counts[3].error },
+];
+---
+<AdminLayout title="Dashboard" activePath="/admin/dashboard" role={auth.role}>
+  <div class="mb-6">
+    <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">
+      Welcome, {auth.role}
+    </h1>
+    <p class="text-sm text-brand-brown-light mt-1">
+      Admin-tier dashboard — real counts below, widgets beyond that are not ported yet.
+    </p>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {stats.map((s) => (
+      <Card>
+        <p class="text-xs font-heading uppercase tracking-wide text-brand-brown-light">{s.label}</p>
+        <p class="text-3xl font-heading font-bold text-brand-brown-dark mt-1">
+          {s.error ? '—' : (s.value ?? 0)}
+        </p>
+        {s.error && <p class="text-[11px] text-red-600 mt-1">query failed — table/columns unverified</p>}
+      </Card>
+    ))}
+  </div>
+</AdminLayout>

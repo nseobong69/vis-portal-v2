@@ -1,0 +1,89 @@
+---
+// Admin Portal — Analytics
+// Was an intentional no-query stub in the previous pass ("guessing an
+// aggregation shape before table shapes are confirmed"). Filling it in
+// now with the most defensible aggregations available — counts and
+// sums that don't require assuming column names beyond what earlier
+// phases already queried successfully (students.class_id,
+// fee_payments.amount/status). A true results-average or
+// attendance-rate widget still needs the results/attendance_week_logs
+// column shapes confirmed against the live schema first — marked below
+// rather than guessed.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Card from '../../components/ui/Card';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+
+const [studentsRes, classesRes, paymentsRes] = await Promise.all([
+  supabase.from('students').select('id, class_id'),
+  supabase.from('classes').select('id, name'),
+  supabase.from('fee_payments').select('amount, status'),
+]);
+
+const anyError = studentsRes.error || classesRes.error || paymentsRes.error;
+
+const classCounts: Record<string, number> = {};
+for (const s of studentsRes.data ?? []) {
+  const key = String((s as any).class_id ?? 'Unassigned');
+  classCounts[key] = (classCounts[key] ?? 0) + 1;
+}
+
+const paidTotal = (paymentsRes.data ?? [])
+  .filter((p: any) => p.status === 'paid' || p.status === 'success')
+  .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+const pendingCount = (paymentsRes.data ?? []).filter((p: any) => p.status !== 'paid' && p.status !== 'success').length;
+---
+<AdminLayout title="Analytics" activePath="/admin/analytics" role={auth.role}>
+  <div class="mb-6">
+    <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Analytics</h1>
+    <p class="text-sm text-brand-brown-light mt-1">
+      Enrollment and fee-collection aggregates. Results/attendance-rate widgets not included — see the phase output doc for why.
+    </p>
+  </div>
+  {anyError && (
+    <p class="text-sm text-red-600 mb-4">
+      One or more underlying queries failed — table/columns not fully verified against the live schema.
+    </p>
+  )}
+  <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+    <Card>
+      <p class="text-xs font-heading uppercase tracking-wide text-brand-brown-light">Total Fees Collected</p>
+      <p class="text-2xl font-heading font-bold text-brand-brown-dark mt-1">₦{paidTotal.toLocaleString()}</p>
+    </Card>
+    <Card>
+      <p class="text-xs font-heading uppercase tracking-wide text-brand-brown-light">Pending Payments</p>
+      <p class="text-2xl font-heading font-bold text-brand-brown-dark mt-1">{pendingCount}</p>
+    </Card>
+    <Card>
+      <p class="text-xs font-heading uppercase tracking-wide text-brand-brown-light">Total Students</p>
+      <p class="text-2xl font-heading font-bold text-brand-brown-dark mt-1">{(studentsRes.data ?? []).length}</p>
+    </Card>
+  </div>
+  <Card title="Enrollment by Class">
+    <div class="space-y-2">
+      {Object.entries(classCounts).map(([classId, count]) => {
+        const cls = (classesRes.data ?? []).find((c: any) => String(c.id) === classId);
+        return (
+          <div class="flex items-center gap-3">
+            <span class="w-32 text-xs text-brand-brown-dark truncate">{cls?.name ?? classId}</span>
+            <div class="flex-1 bg-brand-cream rounded h-3 overflow-hidden">
+              <div class="bg-brand-gold h-3" style={`width: ${Math.min(100, count * 8)}%`}></div>
+            </div>
+            <span class="text-xs text-brand-brown-light w-8 text-right">{count}</span>
+          </div>
+        );
+      })}
+    </div>
+  </Card>
+</AdminLayout>

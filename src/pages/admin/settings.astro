@@ -1,0 +1,45 @@
+---
+// Admin Portal — School Settings
+// super_admin only, per Section 2.2. Reads/writes a single-row
+// `school_settings` table (id=1) — table not confirmed against the
+// live schema, see api/admin/settings/save.ts's comment. Fields cover
+// the homepage CMS items the Redesign Prompt calls out; Cloudinary
+// image fields (logo, leadership photos) not included — text fields
+// only this pass.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Card from '../../components/ui/Card';
+import SettingsForm from '../../components/admin/SettingsForm';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['super_admin']);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data, error } = await supabase.from('school_settings').select('*').eq('id', 1).maybeSingle();
+
+const initial = {
+  school_name: data?.school_name ?? '',
+  tagline: data?.tagline ?? '',
+  what_sets_us_apart: data?.what_sets_us_apart ?? '',
+  social_links: data?.social_links ?? '',
+  adsense_client_id: data?.adsense_client_id ?? '',
+};
+---
+<AdminLayout title="School Settings" activePath="/admin/settings" role={auth.role}>
+  <Card title="School Settings (super_admin only)">
+    {error && (
+      <p class="text-sm text-red-600 mb-3">
+        Query against `school_settings` failed — table not verified against the live schema
+        (see api/admin/settings/save.ts). Form below still works for saving once the table exists.
+      </p>
+    )}
+    <SettingsForm client:load initial={initial} />
+  </Card>
+</AdminLayout>

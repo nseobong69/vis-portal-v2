@@ -1,9 +1,12 @@
 ---
-// Admin Portal — Academics (Notes & Videos)
-// Videos/assignments/submissions tabs not ported — notes list only.
+// Admin Portal — Email Center
+// EmailJS send now wired through /api/admin/email/send.ts (reuses the
+// EMAILJS_* pattern from api/student/profile/send-otp.ts) and every
+// attempt — sent or failed — is logged to email_delivery_log below.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
+import EmailComposeForm from '../../components/admin/EmailComposeForm';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
@@ -18,20 +21,25 @@ if (auth.status === 'unauthorized') {
 
 const supabase = createServerSupabase(Astro.cookies);
 const { data: rows, error } = await supabase
-  .from('academic_notes')
+  .from('email_delivery_log')
   .select('*')
   .limit(25);
 
 const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' }
+  { key: 'recipient', header: 'Recipient' },
+  { key: 'subject', header: 'Subject' },
+  { key: 'status', header: 'Status' }
 ];
 ---
-<AdminLayout title="Academics (Notes & Videos)" activePath="/admin/academics" role={auth.role}>
-  <Card title="Academics (Notes & Videos)">
+<AdminLayout title="Email Center" activePath="/admin/email-center" role={auth.role}>
+  <Card title="Compose">
+    <EmailComposeForm client:load />
+  </Card>
+  <div class="h-4"></div>
+  <Card title="Delivery Log">
     {error && (
       <p class="text-sm text-red-600 mb-3">
-        Query against `academic_notes` failed — table/columns not verified against the live
+        Query against `email_delivery_log` failed — table/columns not verified against the live
         schema yet (same as-audited-not-verified caveat as Phase 0's table list).
       </p>
     )}

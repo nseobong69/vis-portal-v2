@@ -1,0 +1,42 @@
+---
+// Admin Portal — ID Cards
+// Cloudinary photo upload now wired (sign-photo-upload.ts, same
+// signature pattern as the CBT proctoring uploads) and QR/barcode now
+// rendered client-side via QRCode.js/JsBarcode from cdnjs (no npm
+// install available in this environment, so CDN — same tradeoff as
+// every "not ported yet" line elsewhere used to explain, now resolved
+// for this one route). face-api.js face-matching against the photo is
+// NOT included — that's a much bigger lift than a card layout and
+// stays a follow-up.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Card from '../../components/ui/Card';
+import IdCardGenerator from '../../components/admin/IdCardGenerator';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: rows, error } = await supabase
+  .from('students')
+  .select('*')
+  .limit(50);
+---
+<AdminLayout title="ID Cards" activePath="/admin/id-cards" role={auth.role}>
+  <Card title="ID Cards">
+    {error && (
+      <p class="text-sm text-red-600 mb-3">
+        Query against `students` failed — table/columns not verified against the live
+        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
+      </p>
+    )}
+    <IdCardGenerator client:load students={(rows ?? []) as any[]} />
+  </Card>
+</AdminLayout>
