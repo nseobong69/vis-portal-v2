@@ -1,0 +1,156 @@
+---
+// Public dev-only reference page — not part of the Feature Checklist,
+// not auth-gated. Phase 2's "Deliverable to review" per the Project
+// Prompt: approve this before Phase 3 starts.
+import StaffLayout from '../layouts/StaffLayout.astro';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Input from '../components/ui/Input';
+import Select from '../components/ui/Select';
+import Table from '../components/ui/Table';
+import Badge from '../components/ui/Badge';
+
+const swatches = [
+  { name: '--brand-brown', hex: '#5D4037' },
+  { name: '--brand-brown-light', hex: '#8D6E63' },
+  { name: '--brand-brown-dark', hex: '#3E2723' },
+  { name: '--brand-cream', hex: '#FAF7F4' },
+  { name: '--brand-cream-dark', hex: '#EDE4D8' },
+  { name: '--brand-gold', hex: '#F5B301' },
+  { name: '--shell-obsidian', hex: '#0B0E1C' },
+  { name: '--shell-surface', hex: '#111527' },
+  { name: '--success / -700', hex: '#16A34A' },
+  { name: '--danger / -700', hex: '#EF4444' },
+  { name: '--warning / -700', hex: '#D97706' },
+  { name: '--info / -700', hex: '#2563EB' },
+];
+
+const contrastRows = [
+  { pair: 'Body text (#231009) on cream background', ratio: '17.12:1', pass: 'AA + AAA' },
+  { pair: 'Brown text on cream-dark surface', ratio: '10.99:1', pass: 'AA + AAA' },
+  { pair: 'White text on brown button (primary)', ratio: '9.32:1', pass: 'AA + AAA' },
+  { pair: 'Gold text on obsidian nav', ratio: '10.36:1', pass: 'AA + AAA' },
+  { pair: 'Obsidian text on gold button', ratio: '10.36:1', pass: 'AA + AAA' },
+  { pair: 'Shell muted text on obsidian', ratio: '7.49:1', pass: 'AA + AAA' },
+  { pair: 'Light-brown muted text on cream', ratio: '4.33:1', pass: 'AA (large text only)' },
+  { pair: 'White text on raw danger/success/warning/info', ratio: '3.19–3.76:1', pass: 'Large text only — NOT used for body text' },
+  { pair: 'White text on danger-700 / success-700 / warning-700 / info-700', ratio: '5.02–7.09:1', pass: 'AA (all sizes) — used for Toast, danger Button' },
+];
+
+const sampleRows = [
+  { id: '1', student: 'Amara Okon', status: 'Present' },
+  { id: '2', student: 'Chidi Nwosu', status: 'Absent' },
+  { id: '3', student: 'Grace Effiong', status: 'Late' },
+];
+---
+<StaffLayout title="Style Guide">
+  <h1 class="font-heading font-extrabold text-2xl text-brand-brown-dark mb-2">
+    vis-portal-v2 — Design System (Phase 2)
+  </h1>
+  <p class="text-brand-brown-light mb-8 max-w-2xl">
+    Tokens, contrast audit, and the component library, all derived from the
+    live app's existing brand colors and fonts. Approve this page before
+    Phase 3 (portal rebuilds) begins.
+  </p>
+
+  <Card title="Color tokens" className="mb-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+      {swatches.map((s) => (
+        <div>
+          <div class="h-16 rounded-md border border-brand-cream-dark" style={`background:${s.hex}`}></div>
+          <p class="text-xs font-mono mt-1 text-brand-brown-dark">{s.name}</p>
+          <p class="text-xs font-mono text-brand-brown-light">{s.hex}</p>
+        </div>
+      ))}
+    </div>
+  </Card>
+
+  <Card title="WCAG AA contrast audit" className="mb-6">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-brand-brown-dark border-b border-brand-cream-dark">
+          <th class="py-2 pr-4">Pairing</th>
+          <th class="py-2 pr-4">Ratio</th>
+          <th class="py-2">Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {contrastRows.map((r) => (
+          <tr class="border-b border-brand-cream-dark/60">
+            <td class="py-2 pr-4">{r.pair}</td>
+            <td class="py-2 pr-4 font-mono">{r.ratio}</td>
+            <td class="py-2">{r.pass}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <p class="text-xs text-brand-brown-light mt-3">
+      Targets: 4.5:1 body text, 3:1 large text (per Phase 2's session
+      prompt). The raw semantic colors (success/danger/warning/info) fail
+      AA for white body text, so a darker "-700" tone of each — already
+      present elsewhere in the old app's palette — is used wherever white
+      text sits on a solid fill (Toast, danger Button). Badges instead use
+      a soft background + the -700 text color.
+    </p>
+  </Card>
+
+  <Card title="Buttons" className="mb-6">
+    <div class="flex flex-wrap gap-3">
+      <Button variant="primary">Primary</Button>
+      <Button variant="gold">Gold</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="danger">Danger</Button>
+      <Button variant="ghost">Ghost</Button>
+      <Button variant="primary" disabled>Disabled</Button>
+    </div>
+  </Card>
+
+  <Card title="Badges" className="mb-6">
+    <div class="flex flex-wrap gap-3">
+      <Badge tone="success">Present</Badge>
+      <Badge tone="danger">Absent</Badge>
+      <Badge tone="warning">Late</Badge>
+      <Badge tone="info">Info</Badge>
+      <Badge tone="neutral">Neutral</Badge>
+    </div>
+  </Card>
+
+  <Card title="Form controls" className="mb-6">
+    <div class="grid sm:grid-cols-2 gap-4 max-w-xl">
+      <Input id="sample-name" label="Student name" placeholder="e.g. Amara Okon" />
+      <Input id="sample-error" label="Admission number" error="This field is required" />
+      <Select
+        id="sample-class"
+        label="Class"
+        placeholder="Select a class"
+        options={[
+          { value: 'jss1', label: 'JSS 1' },
+          { value: 'jss2', label: 'JSS 2' },
+          { value: 'sss1', label: 'SSS 1' },
+        ]}
+      />
+    </div>
+  </Card>
+
+  <Card title="Table" className="mb-6">
+    <Table
+      columns={[
+        { key: 'student', header: 'Student' },
+        { key: 'status', header: 'Status' },
+      ]}
+      rows={sampleRows}
+      getRowKey={(r) => r.id}
+    />
+  </Card>
+
+  <Card title="Modal & Toast">
+    <p class="text-sm text-brand-brown-light">
+      Modal and Toast both require client-side state, so they're not
+      demoed statically on this page — see
+      <code class="font-mono text-xs bg-brand-cream px-1 py-0.5 rounded">src/components/ui/Modal.tsx</code>
+      and
+      <code class="font-mono text-xs bg-brand-cream px-1 py-0.5 rounded">src/components/ui/Toast.tsx</code>
+      for implementations, both built on the same tokens as everything above.
+    </p>
+  </Card>
+</StaffLayout>

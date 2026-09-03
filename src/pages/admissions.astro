@@ -1,0 +1,67 @@
+---
+// Public Admissions form — its own Feature Checklist row (Section 2 row
+// 22 / old app's showAdmissionPublic()), built as its own real route per
+// the Section 3 hard requirement (no client-side router / overlay).
+//
+// Scope for this pass: the full field set from the old app's public form
+// (Basic → Biodata → Religion → Previous School → Parents → Health &
+// Consent → Academic → Payment), a real Supabase insert on submit, and
+// bank-transfer/cash payment paths that need no live credentials.
+//
+// Also includes: the embedded aptitude-test (CBT) step, gated per-class
+// via cbt_exams (api/admissions/cbt-check|questions|submit.ts — grading
+// happens server-side, correct answers never sent to the browser), and
+// real Paystack checkout (api/admissions/paystack-initialize|verify.ts +
+// admissions/paystack-callback.astro). Both require server env vars that
+// this environment doesn't have — see README "Environment variables
+// needed" for exactly what to set before either will actually work.
+//
+// CountriesNow decision (Section 2.4, confirmed by user): kept the live
+// API, with a static fallback if it's unreachable — see
+// src/lib/admissions-locations.ts.
+import PublicLayout from '../layouts/PublicLayout.astro';
+import AdmissionWizard from '../components/admissions/AdmissionWizard.tsx';
+import { createServerSupabase } from '../lib/supabase';
+
+const supabase = createServerSupabase(Astro.cookies);
+
+let classes: { id: string; name: string }[] = [];
+try {
+  const { data } = await supabase.from('classes').select('id,name').order('name');
+  if (data?.length) {
+    const seen = new Set<string>();
+    for (const c of data) {
+      const name = (c.name || '').trim();
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        classes.push({ id: c.id, name });
+      }
+    }
+  }
+} catch {
+  // fall through to default list below
+}
+if (!classes.length) {
+  // Same fallback class list as the old app's showAdmissionPublic(), for
+  // when the classes table can't be reached.
+  classes = [
+    { id: 'kg-lower', name: 'Kindergarten Lower' }, { id: 'kg-upper', name: 'Kindergarten Upper' },
+    { id: 'nurs-1', name: 'Nursery 1' }, { id: 'nurs-2', name: 'Nursery 2' },
+    { id: 'pry-1', name: 'Primary 1' }, { id: 'pry-2', name: 'Primary 2' }, { id: 'pry-3', name: 'Primary 3' },
+    { id: 'pry-4', name: 'Primary 4' }, { id: 'pry-5', name: 'Primary 5' }, { id: 'pry-6', name: 'Primary 6' },
+    { id: 'jss-1', name: 'JSS 1' }, { id: 'jss-2', name: 'JSS 2' }, { id: 'jss-3', name: 'JSS 3' },
+    { id: 'sss-1', name: 'SSS 1' }, { id: 'sss-2', name: 'SSS 2' }, { id: 'sss-3', name: 'SSS 3' },
+  ];
+}
+
+let settings: Record<string, any> = {};
+try {
+  const { data } = await supabase.from('school_settings').select('*').limit(1).single();
+  settings = data || {};
+} catch {
+  // fall through to defaults rendered by the wizard itself
+}
+---
+<PublicLayout title="Admissions" description="Apply for admission to Victorious International Schools.">
+  <AdmissionWizard client:load classes={classes} settings={settings} />
+</PublicLayout>

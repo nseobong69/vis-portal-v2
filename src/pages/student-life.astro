@@ -1,0 +1,43 @@
+---
+// Real route at /student-life. This modal (showStudentLifePage()) was
+// NOT itemized in Phase 0's audit — a fifth public info page beyond
+// About/Academics/CBT Info/Admissions Info that Phase 0 flagged. Adding
+// it here for parity; flagged again in the Phase 3 output doc.
+import PublicLayout from '../layouts/PublicLayout.astro';
+import InfoRow from '../components/InfoRow.astro';
+
+const sections = [
+  { icon: '⚽', title: 'Athletics & Sports',
+    body: 'From the football pitch to the track field, our athletics programme keeps students active, resilient, and team-spirited. Students compete in inter-house and inter-school sports, building discipline and camaraderie every season.' },
+  { icon: '🌟', title: 'Talents Hunt',
+    body: "Our annual Talents Hunt gives every student a stage. Whether it's singing, spoken word, dance, drama, or comedy — students take centre stage and are celebrated for their unique gifts in front of the whole school community." },
+  { icon: '🎭', title: 'Clubs & Activities',
+    body: 'From the Debate Club and Press Club to the Literary and Science Clubs, students find their community in our wide range of extracurricular activities. Every club is student-led and faculty-supported, fostering leadership at every level.' },
+  { icon: '🎯', title: 'Career Guidance',
+    body: "Our career counsellors walk alongside students from JSS1 through SS3, helping them identify strengths, explore professions, and make informed subject and tertiary choices — so every student leaves school knowing where they're headed." },
+  { icon: '🎉', title: 'Celebrations & Events',
+    body: 'End-of-term parties, graduation ceremonies, cultural days, and prize-giving events — school life at VIS is filled with joyful moments that bring students, staff, and families together and build lasting memories.' },
+];
+---
+<PublicLayout title="Student Life" description="Student life at Victorious International Schools.">
+  <div class="max-w-[680px] mx-auto px-5 py-12">
+    <h1 class="font-heading font-extrabold text-3xl text-brand-brown-dark mb-3">Life Beyond the Classroom</h1>
+    <p class="text-brand-brown-light leading-relaxed mb-8">
+      From the sports field to the stage, VIS students grow into confident, well-rounded
+      individuals through programmes that celebrate every talent and interest.
+    </p>
+
+    <div class="border border-brand-cream-dark rounded-lg px-4">
+      {sections.map((s) => <InfoRow icon={s.icon} title={s.title} body={s.body} />)}
+    </div>
+
+    <div class="flex gap-3 mt-8 flex-wrap">
+      <a href="/admissions" class="flex-1 min-w-[180px] text-center bg-brand-brown text-white font-semibold py-3.5 rounded-md hover:bg-brand-brown-dark">
+        Join the Community →
+      </a>
+      <a href="/" class="px-5 py-3.5 rounded-md border border-brand-cream-dark text-brand-brown-light font-medium hover:bg-brand-cream">
+        Back home
+      </a>
+    </div>
+  </div>
+</PublicLayout>
