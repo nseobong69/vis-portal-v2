@@ -1,1 +1,83 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — vis-portal-v2
+   Extracted and refined from the old index.html's `:root` block (lines
+   328–343) and its most-used inline hex colors. Every value below is
+   sourced from the live app, not invented — see the "Source" comment on
+   each group. Two failing pairs from the old palette (white text on the
+   raw semantic colors) got a darker "-700" shade added for AA compliance;
+   those -700 shades are ALSO lifted from colors already used elsewhere in
+   index.html's inline styles (not new colors), see notes below.
+   ═══════════════════════════════════════════════════════════════════════ */
 
+:root {
+  /* ── Brand: brown/gold (Source: index.html :root, lines 329–331) ── */
+  --brand-brown:        #5D4037;
+  --brand-brown-light:  #8D6E63;
+  --brand-brown-dark:   #3E2723;
+  --brand-cream:        #FAF7F4;
+  --brand-cream-dark:   #EDE4D8;
+  --brand-gold:         #F5B301;
+  --brand-gold-soft:    rgba(245, 179, 1, 0.18);
+  --brand-gold-glow:    rgba(245, 179, 1, 0.32);
+  --brand-gold-dark:    #C97D00; /* gradient stop used with --gold, index.html line 386 */
+
+  /* ── Shell: nav / login / public chrome (Source: index.html :root, lines 333–338) ── */
+  --shell-obsidian:     #0B0E1C;
+  --shell-surface:      #111527;
+  --shell-border:       rgba(255, 255, 255, 0.10);
+  --shell-text:         #F1F5F9;
+  --shell-muted:        #94A3B8;
+  --shell-violet:       rgba(99, 102, 241, 0.22);
+  --shell-teal:         rgba(34, 197, 94, 0.10);
+
+  /* ── Body text (Source: index.html body{} rule, line 347) ── */
+  --text-body:          #231009;
+
+  /* ── Semantic (Source: most-frequent status hexes across index.html) ──
+     Base tones are used for backgrounds/badges/borders. The "-700" tone
+     is the AA-safe pairing for white text on a solid fill (buttons,
+     solid toasts) — each -700 value is itself pulled from index.html's
+     existing palette (its darker outline/border variant of the same
+     status color), not a new invented color. */
+  --success:            #16A34A;
+  --success-700:        #15803D;
+  --success-soft:       #DCFCE7;
+  --danger:             #EF4444;
+  --danger-700:         #B91C1C;
+  --danger-soft:        #FEE2E2;
+  --warning:            #D97706;
+  --warning-700:        #92400E;
+  --warning-soft:       #FEF3C7;
+  --info:               #2563EB;
+  --info-700:           #1D4ED8;
+  --info-soft:          #DBEAFE;
+
+  /* ── Fonts (Source: index.html Google Fonts link, line 145) ── */
+  --font-heading: 'Syne', sans-serif;
+  --font-body:    'Outfit', sans-serif;
+
+  /* ── Spacing scale (4px base, matches the most common px values found
+     across index.html's inline styles: 4/8/10/12/14/20px) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ── Radius (Source: most common radius values in index.html: 8–12px
+     for controls, 20px+ for pills/badges) ── */
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* ── Shadow (Source: index.html's gold-glow shadow pattern, lines
+     362, 386, 422) generalized into neutral + brand variants ── */
+  --shadow-sm:  0 1px 2px rgba(35, 16, 9, 0.08);
+  --shadow-md:  0 4px 16px rgba(35, 16, 9, 0.10);
+  --shadow-lg:  0 12px 40px rgba(0, 0, 0, 0.18);
+  --shadow-gold: 0 4px 16px rgba(245, 179, 1, 0.26);
+}
