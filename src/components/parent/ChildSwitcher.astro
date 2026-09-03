@@ -1,1 +1,34 @@
+---
+// Ports childSwitcherBar() from the old app. There it mutated
+// UP._activeChildId client-side and called back into the current render
+// function; here each button is a real link to `?child=<id>` on the
+// SAME route, so the active child is part of the URL (shareable,
+// survives refresh) rather than in-memory state. Hidden entirely when
+// there's only one child, matching the old app's `siblings.length < 2`
+// check.
+import type { Child } from '../../lib/parent';
 
+interface Props {
+  siblings: Child[];
+  activeId: string;
+  basePath: string; // e.g. "/parent/results"
+}
+const { siblings, activeId, basePath } = Astro.props;
+---
+{siblings.length >= 2 && (
+  <div class="flex gap-2 flex-wrap mb-4">
+    {siblings.map((s) => (
+      <a
+        href={`${basePath}?child=${s.id}`}
+        class:list={[
+          'inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
+          s.id === activeId
+            ? 'bg-brand-brown text-white border-brand-brown'
+            : 'bg-white text-brand-brown border-brand-cream-dark hover:bg-brand-cream',
+        ]}
+      >
+        {s.full_name.split(' ')[0]}
+      </a>
+    ))}
+  </div>
+)}
