@@ -1,1 +1,26 @@
+---
+// Admin Portal — Account Creation
+// Was missing entirely from the Phase 1 routing-shell pass (nav item
+// existed in AdminLayout, route did not). Now wired to
+// /api/admin/accounts/create.ts, which uses a Supabase service-role
+// key — the one genuinely privileged write in this whole portal, see
+// that file's comment for why.
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import Card from '../../../components/ui/Card';
+import AccountCreateForm from '../../../components/admin/AccountCreateForm';
+import { checkAuth } from '../../../lib/auth';
 
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor']);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+---
+<AdminLayout title="Account Creation" activePath="/admin/accounts/create" role={auth.role}>
+  <Card title="Create a New Account">
+    <AccountCreateForm client:load />
+  </Card>
+</AdminLayout>
