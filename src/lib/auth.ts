@@ -18,23 +18,26 @@ export type AuthResult =
 
 /**
  * Server-side auth + role check. Call this at the TOP of every protected
- * page's frontmatter, before rendering any real data — per Section 3:
- * "This check must happen server-side on every request to that route,
- * not only in client-side JS after the page has already loaded."
+ * page's frontmatter, before rendering any real data.
  *
- * TODO(Phase 1 real session): replace the `profiles` table lookup below
- * with however the old app actually resolves ROLE from the session
- * (check index.html's ROLE-assignment logic near the `defineProperty`
- * tamper-proofing mentioned in its CSP comment) — this stub assumes a
- * `profiles.role` column keyed by auth user id, which matches the
- * Phase 0 audit's table list but wasn't verified line-by-line.
+ * FIX: supabase.auth.getUser() must receive the access token explicitly.
+ * With persistSession: false there is no stored session, so calling
+ * getUser() with no argument always returns null — even when the cookie
+ * is present and valid. Passing the token directly validates it against
+ * Supabase server-side and returns the real user.
  */
 export async function checkAuth(
   cookies: AstroCookies,
   allowedRoles: Role[]
 ): Promise<AuthResult> {
+  const accessToken = cookies.get('sb-access-token')?.value;
+  if (!accessToken) return { status: 'unauthenticated' };
+
   const supabase = createServerSupabase(cookies);
-  const { data: { user } } = await supabase.auth.getUser();
+
+  // THE FIX: pass accessToken explicitly instead of calling getUser()
+  // with no argument, which always returns null when persistSession: false
+  const { data: { user } } = await supabase.auth.getUser(accessToken);
 
   if (!user) return { status: 'unauthenticated' };
 
