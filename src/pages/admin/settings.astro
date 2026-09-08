@@ -1,17 +1,25 @@
 ---
-// Admin Portal — School Settings
-// super_admin only, per Section 2.2. Reads/writes a single-row
-// `school_settings` table (id=1) — table not confirmed against the
-// live schema, see api/admin/settings/save.ts's comment. Fields cover
-// the homepage CMS items the Redesign Prompt calls out; Cloudinary
-// image fields (logo, leadership photos) not included — text fields
-// only this pass.
-import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import SettingsForm from '../../components/admin/SettingsForm';
+// Real route at /admin/settings. Same auth-before-data pattern as
+// staff/attendance.astro (Section 3): server-side role check runs first,
+// then — and only then — real school_settings data is fetched and
+// rendered. This page ports two of the old app's SS_SECTIONS
+// (index.html ~line 17580): 'school_identity' and 'apart_cards'.
+// Everything else in that screen (Academic Calendar, Brand Colours,
+// Signatures & Stamps, Payment Gateways, Email Config, Leadership
+// cards, etc.) is intentionally NOT built yet — later phases, per
+// Nse's request to do this slice-by-slice rather than guess the rest.
+import StaffLayout from '../../layouts/StaffLayout.astro';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
+import Card from '../../components/ui/Card';
+import ApartCardsEditor from '../../components/admin/ApartCardsEditor';
+import LeadershipCardsEditor from '../../components/admin/LeadershipCardsEditor';
+import SignatoriesEditor from '../../components/admin/SignatoriesEditor';
 
+const ALL_SESSIONS = ['2024/2025', '2025/2026', '2026/2027', '2027/2028', '2028/2029'];
+
+// Old app gates this whole screen "School Settings (super_admin only)"
+// (see the screenshot) — same restriction here.
 const auth = await checkAuth(Astro.cookies, ['super_admin']);
 
 if (auth.status === 'unauthenticated') {
@@ -22,24 +30,385 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data, error } = await supabase.from('school_settings').select('*').eq('id', 1).maybeSingle();
+const { data: ss, error } = await supabase
+  .from('school_settings')
+  .select(`
+    school_name, motto, address, phone1, phone2, email, logo_url, hero_image_url,
+    hp_apart_cards,
+    current_session, current_term, term_end_date, next_term_date,
+    primary_color, secondary_color,
+    admission_signatory_name, admission_signatory_role, admission_signatory_signature, admission_signatory_stamp,
+    finance_signatory_name, finance_signatory_role, finance_signatory_signature, finance_signatory_stamp,
+    hp_leadership_cards, hp_leadership_heading, hp_leadership_subtitle
+  `)
+  .eq('id', 1)
+  .single();
 
-const initial = {
-  school_name: data?.school_name ?? '',
-  tagline: data?.tagline ?? '',
-  what_sets_us_apart: data?.what_sets_us_apart ?? '',
-  social_links: data?.social_links ?? '',
-  adsense_client_id: data?.adsense_client_id ?? '',
+// Same defensive JSON.parse the old app does (index.html ~line 17901) —
+// hp_apart_cards is stored as a JSON string, not a native array column.
+let apartCards: Array<{ icon: string; title: string; body: string; cta: string; img: string; bg: string }> = [];
+if (ss?.hp_apart_cards) {
+  try {
+    const raw = typeof ss.hp_apart_cards === 'string' ? JSON.parse(ss.hp_apart_cards) : ss.hp_apart_cards;
+    if (Array.isArray(raw)) apartCards = raw;
+  } catch {
+    apartCards = [];
+  }
+}
+
+const identity = {
+  school_name: ss?.school_name || '',
+  motto: ss?.motto || '',
+  address: ss?.address || '',
+  phone1: ss?.phone1 || '',
+  phone2: ss?.phone2 || '',
+  email: ss?.email || '',
+  logo_url: ss?.logo_url || '',
+  hero_image_url: ss?.hero_image_url || '',
 };
+
+const calendar = {
+  current_session: ss?.current_session || '2025/2026',
+  current_term: ss?.current_term || '1st Term',
+  term_end_date: ss?.term_end_date || '',
+  next_term_date: ss?.next_term_date || '',
+};
+
+const colours = {
+  primary_color: ss?.primary_color || '#5D4037',
+  secondary_color: ss?.secondary_color || '#F8F1E3',
+};
+
+const admissionSignatory = {
+  name: ss?.admission_signatory_name || '',
+  role: ss?.admission_signatory_role || 'Principal',
+  signature: ss?.admission_signatory_signature || '',
+  stamp: ss?.admission_signatory_stamp || '',
+};
+const financeSignatory = {
+  name: ss?.finance_signatory_name || '',
+  role: ss?.finance_signatory_role || 'School Director',
+  signature: ss?.finance_signatory_signature || '',
+  stamp: ss?.finance_signatory_stamp || '',
+};
+
+let leadershipCards: Array<{ photo: string; name: string; position: string; bio: string }> = [];
+if (ss?.hp_leadership_cards) {
+  try {
+    const raw = typeof ss.hp_leadership_cards === 'string' ? JSON.parse(ss.hp_leadership_cards) : ss.hp_leadership_cards;
+    if (Array.isArray(raw)) leadershipCards = raw;
+  } catch {
+    leadershipCards = [];
+  }
+}
+const leadershipHeading = ss?.hp_leadership_heading || 'School Administration';
+const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the school every day.';
 ---
-<AdminLayout title="School Settings" activePath="/admin/settings" role={auth.role}>
-  <Card title="School Settings (super_admin only)">
+<StaffLayout title="School Settings">
+  <div class="flex flex-col gap-6 max-w-[760px]">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">School Settings</h1>
+      <p class="text-sm text-brand-brown-light">super_admin only</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `school_settings` failed — table not verified against the live schema
-        (see api/admin/settings/save.ts). Form below still works for saving once the table exists.
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load school_settings: {error.message}
+      </div>
     )}
-    <SettingsForm client:load initial={initial} />
-  </Card>
-</AdminLayout>
+
+    <Card title="School Identity">
+      <form id="identity-form" class="flex flex-col gap-4">
+        <div class="flex flex-col gap-1">
+          <label for="id-school_name" class="text-sm font-medium text-brand-brown-dark">School Name</label>
+          <input id="id-school_name" name="school_name" value={identity.school_name}
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="id-motto" class="text-sm font-medium text-brand-brown-dark">Motto</label>
+          <input id="id-motto" name="motto" value={identity.motto}
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="id-address" class="text-sm font-medium text-brand-brown-dark">Address</label>
+          <input id="id-address" name="address" value={identity.address}
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1">
+            <label for="id-phone1" class="text-sm font-medium text-brand-brown-dark">Phone 1</label>
+            <input id="id-phone1" name="phone1" value={identity.phone1}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="id-phone2" class="text-sm font-medium text-brand-brown-dark">Phone 2</label>
+            <input id="id-phone2" name="phone2" value={identity.phone2}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="id-email" class="text-sm font-medium text-brand-brown-dark">Email</label>
+          <input id="id-email" name="email" type="email" value={identity.email}
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+        </div>
+
+        {(['logo_url', 'hero_image_url'] as const).map((field) => (
+          <div class="flex flex-col gap-1">
+            <span class="text-sm font-medium text-brand-brown-dark">
+              {field === 'logo_url' ? 'School Logo' : 'Hero Image'}
+            </span>
+            <div class="flex items-center gap-3 flex-wrap">
+              <div id={`preview-${field}`} class="h-14 w-20 rounded-md border border-brand-cream-dark bg-brand-cream flex items-center justify-center overflow-hidden text-xl">
+                {identity[field] ? <img src={identity[field]} alt="" class="h-full w-full object-cover" /> : '🖼️'}
+              </div>
+              <label class="text-xs font-medium px-3 py-1.5 rounded-sm border border-brand-cream-dark bg-white cursor-pointer hover:bg-brand-cream">
+                Upload to Cloudinary
+                <input type="file" accept="image/*" class="hidden" data-upload-field={field} />
+              </label>
+              <input type="hidden" id={`id-${field}`} name={field} value={identity[field]} />
+            </div>
+          </div>
+        ))}
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save School Identity
+          </button>
+          <span id="identity-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Academic Calendar">
+      <form id="calendar-form" class="flex flex-col gap-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1">
+            <label for="cal-session" class="text-sm font-medium text-brand-brown-dark">Current Session</label>
+            <select id="cal-session" name="current_session"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold">
+              {ALL_SESSIONS.map((s) => <option value={s} selected={s === calendar.current_session}>{s}</option>)}
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="cal-term" class="text-sm font-medium text-brand-brown-dark">Current Term</label>
+            <select id="cal-term" name="current_term"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold">
+              {['1st Term', '2nd Term', '3rd Term'].map((t) => <option selected={t === calendar.current_term}>{t}</option>)}
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="cal-termend" class="text-sm font-medium text-brand-brown-dark">Term Closes / School Closes Date</label>
+            <input id="cal-termend" name="term_end_date" type="date" value={calendar.term_end_date}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="cal-nextterm" class="text-sm font-medium text-brand-brown-dark">Next Term Begins Date</label>
+            <input id="cal-nextterm" name="next_term_date" type="date" value={calendar.next_term_date}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+          </div>
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Academic Calendar
+          </button>
+          <span id="calendar-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="School Brand Colours">
+      <form id="colours-form" class="flex flex-col gap-4">
+        <div class="flex gap-6 flex-wrap items-center">
+          <div class="flex flex-col gap-1">
+            <label for="col-primary" class="text-sm font-medium text-brand-brown-dark">Primary Colour</label>
+            <div class="flex items-center gap-2">
+              <input type="color" id="col-primary" name="primary_color" value={colours.primary_color} class="w-11 h-9 rounded-md border border-brand-cream-dark cursor-pointer" />
+              <input type="text" id="col-primary-hex" value={colours.primary_color} class="w-24 font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2" />
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="col-secondary" class="text-sm font-medium text-brand-brown-dark">Background Colour</label>
+            <div class="flex items-center gap-2">
+              <input type="color" id="col-secondary" name="secondary_color" value={colours.secondary_color} class="w-11 h-9 rounded-md border border-brand-cream-dark cursor-pointer" />
+              <input type="text" id="col-secondary-hex" value={colours.secondary_color} class="w-24 font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2" />
+            </div>
+          </div>
+          <div id="colour-preview" class="px-5 py-3.5 rounded-md text-white text-sm font-semibold" style={`background:${colours.primary_color}`}>
+            Preview — Buttons &amp; Accents
+          </div>
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Brand Colours
+          </button>
+          <span id="colours-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Signatures, Names & Stamps">
+      <SignatoriesEditor client:load initialAdmission={admissionSignatory} initialFinance={financeSignatory} />
+    </Card>
+
+    <Card title={'"What Sets Us Apart" Cards'}>
+      <ApartCardsEditor client:load initialCards={apartCards} />
+    </Card>
+
+    <Card title={'"Meet Our Leadership" Cards'}>
+      <LeadershipCardsEditor
+        client:load
+        initialCards={leadershipCards}
+        initialHeading={leadershipHeading}
+        initialSubtitle={leadershipSubtitle}
+      />
+    </Card>
+  </div>
+</StaffLayout>
+
+<script>
+  // Vanilla-JS handlers for the static Identity form — this half of the
+  // page has no repeatable/dynamic state, so it doesn't need a React
+  // island (Section 3 note on attendance.astro applies the same logic
+  // here: hydrate only what's actually interactive).
+  async function uploadToCloudinary(file: File, folder: string): Promise<string> {
+    const signRes = await fetch('/api/admin/settings/sign-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder }),
+    });
+    const sig = await signRes.json();
+    if (!signRes.ok || !sig?.signature) throw new Error(sig?.error || 'Upload signing failed.');
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('folder', sig.folder);
+    fd.append('public_id', sig.public_id);
+    fd.append('api_key', sig.api_key);
+    fd.append('signature', sig.signature);
+    fd.append('timestamp', String(sig.timestamp));
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloud_name}/image/upload`, {
+      method: 'POST',
+      body: fd,
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.secure_url as string;
+  }
+
+  document.querySelectorAll<HTMLInputElement>('input[data-upload-field]').forEach((input) => {
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const field = input.dataset.uploadField!;
+      const folder = 'vis/school';
+      const preview = document.getElementById(`preview-${field}`)!;
+      const hidden = document.getElementById(`id-${field}`) as HTMLInputElement;
+      preview.textContent = 'Uploading…';
+      try {
+        const url = await uploadToCloudinary(file, folder);
+        hidden.value = url;
+        preview.innerHTML = `<img src="${url}" alt="" class="h-full w-full object-cover">`;
+      } catch (e) {
+        preview.textContent = '🖼️';
+        alert(e instanceof Error ? e.message : 'Upload failed.');
+      } finally {
+        input.value = '';
+      }
+    });
+  });
+
+  const form = document.getElementById('identity-form') as HTMLFormElement;
+  const statusEl = document.getElementById('identity-status')!;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    statusEl.textContent = 'Saving…';
+    statusEl.className = 'text-sm text-brand-brown-light';
+    const fd = new FormData(form);
+    const identity: Record<string, string> = {};
+    ['school_name', 'motto', 'address', 'phone1', 'phone2', 'email', 'logo_url', 'hero_image_url'].forEach((k) => {
+      identity[k] = (fd.get(k) as string) || '';
+    });
+    try {
+      const res = await fetch('/api/admin/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Save failed.');
+      statusEl.textContent = '✅ Saved.';
+      statusEl.className = 'text-sm text-success-700';
+    } catch (err) {
+      statusEl.textContent = err instanceof Error ? err.message : 'Save failed.';
+      statusEl.className = 'text-sm text-danger-700';
+    }
+  });
+
+  // ── Academic Calendar ──
+  const calForm = document.getElementById('calendar-form') as HTMLFormElement;
+  const calStatus = document.getElementById('calendar-status')!;
+  calForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    calStatus.textContent = 'Saving…';
+    calStatus.className = 'text-sm text-brand-brown-light';
+    const fd = new FormData(calForm);
+    const calendar: Record<string, string> = {};
+    ['current_session', 'current_term', 'term_end_date', 'next_term_date'].forEach((k) => {
+      calendar[k] = (fd.get(k) as string) || '';
+    });
+    try {
+      const res = await fetch('/api/admin/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calendar }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Save failed.');
+      calStatus.textContent = '✅ Saved.';
+      calStatus.className = 'text-sm text-success-700';
+    } catch (err) {
+      calStatus.textContent = err instanceof Error ? err.message : 'Save failed.';
+      calStatus.className = 'text-sm text-danger-700';
+    }
+  });
+
+  // ── Brand Colours ──
+  const priColor = document.getElementById('col-primary') as HTMLInputElement;
+  const priHex = document.getElementById('col-primary-hex') as HTMLInputElement;
+  const secColor = document.getElementById('col-secondary') as HTMLInputElement;
+  const secHex = document.getElementById('col-secondary-hex') as HTMLInputElement;
+  const preview = document.getElementById('colour-preview') as HTMLDivElement;
+
+  function syncPreview() {
+    preview.style.background = priColor.value;
+  }
+  priColor.addEventListener('input', () => { priHex.value = priColor.value; syncPreview(); });
+  priHex.addEventListener('input', () => { priColor.value = priHex.value; syncPreview(); });
+  secColor.addEventListener('input', () => { secHex.value = secColor.value; syncPreview(); });
+  secHex.addEventListener('input', () => { secColor.value = secHex.value; syncPreview(); });
+
+  const coloursForm = document.getElementById('colours-form') as HTMLFormElement;
+  const coloursStatus = document.getElementById('colours-status')!;
+  coloursForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    coloursStatus.textContent = 'Saving…';
+    coloursStatus.className = 'text-sm text-brand-brown-light';
+    try {
+      const res = await fetch('/api/admin/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          colours: { primary_color: priHex.value, secondary_color: secHex.value },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Save failed.');
+      coloursStatus.textContent = '✅ Saved.';
+      coloursStatus.className = 'text-sm text-success-700';
+    } catch (err) {
+      coloursStatus.textContent = err instanceof Error ? err.message : 'Save failed.';
+      coloursStatus.className = 'text-sm text-danger-700';
+    }
+  });
+</script>
