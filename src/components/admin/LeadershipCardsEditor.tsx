@@ -84,8 +84,7 @@ export default function LeadershipCardsEditor({ initialCards, initialHeading, in
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           leadership_cards: cards,
-          leadership_heading: heading,
-          leadership_subtitle: subtitle,
+          fields: { hp_leadership_heading: heading, hp_leadership_subtitle: subtitle },
         }),
       });
       const data = await res.json();

@@ -115,7 +115,7 @@ export default function SignatoriesEditor({ initialAdmission, initialFinance }: 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          signatories: {
+          fields: {
             admission_signatory_name: admission.name,
             admission_signatory_role: admission.role,
             admission_signatory_signature: admission.signature,
