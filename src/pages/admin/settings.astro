@@ -2,12 +2,11 @@
 // Real route at /admin/settings. Same auth-before-data pattern as
 // staff/attendance.astro (Section 3): server-side role check runs first,
 // then — and only then — real school_settings data is fetched and
-// rendered. This page ports two of the old app's SS_SECTIONS
-// (index.html ~line 17580): 'school_identity' and 'apart_cards'.
-// Everything else in that screen (Academic Calendar, Brand Colours,
-// Signatures & Stamps, Payment Gateways, Email Config, Leadership
-// cards, etc.) is intentionally NOT built yet — later phases, per
-// Nse's request to do this slice-by-slice rather than guess the rest.
+// rendered. This page now ports all 18 of the old app's SS_SECTIONS
+// (index.html ~line 17580). The only things intentionally NOT covered,
+// because they are not simple school_settings columns, are:
+//  - 'signatures_stamps' Classes tab -> separate `class_signatures` table
+//  - 'admissions_fees' per-class fee override -> separate per-class UI
 import StaffLayout from '../../layouts/StaffLayout.astro';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
@@ -15,6 +14,7 @@ import Card from '../../components/ui/Card';
 import ApartCardsEditor from '../../components/admin/ApartCardsEditor';
 import LeadershipCardsEditor from '../../components/admin/LeadershipCardsEditor';
 import SignatoriesEditor from '../../components/admin/SignatoriesEditor';
+import LifeTabsEditor from '../../components/admin/LifeTabsEditor';
 
 const ALL_SESSIONS = ['2024/2025', '2025/2026', '2026/2027', '2027/2028', '2028/2029'];
 
@@ -39,7 +39,31 @@ const { data: ss, error } = await supabase
     primary_color, secondary_color,
     admission_signatory_name, admission_signatory_role, admission_signatory_signature, admission_signatory_stamp,
     finance_signatory_name, finance_signatory_role, finance_signatory_signature, finance_signatory_stamp,
-    hp_leadership_cards, hp_leadership_heading, hp_leadership_subtitle
+    hp_leadership_cards, hp_leadership_heading, hp_leadership_subtitle,
+    paystack_public_key, remita_public_key, bank_name, bank_account_name, bank_account_number, payment_phone,
+    emailjs_service_id, emailjs_template_id, emailjs_public_key, reply_email,
+    admission_fee_default, invigilator_pin, apk_url,
+    adm_card_image_url, adm_card_badge, adm_card_badge_show, adm_card_intro, adm_card_steps, adm_card_docs,
+    hp_news_heading, hp_news_subtext,
+    public_tagline, public_contact_visible, public_admission_btn, public_cbt_btn, public_feed_visible,
+    social_facebook, social_instagram, social_youtube, social_linkedin, social_twitter,
+    hp_hero_tag, hp_hero_headline, hp_hero_sub, hp_hero_cta_primary, hp_hero_cta_secondary, hp_stats,
+    hp_life_tabs,
+    hp_story_1_eyebrow, hp_story_1_heading, hp_story_1_body, hp_story_1_cta1, hp_story_1_cta2,
+    hp_story_2_heading, hp_story_2_body, hp_story_wisdom,
+    hp_story_3_heading, hp_story_3_body, hp_story_courage,
+    hp_story_4_heading, hp_story_4_body, hp_story_compassion,
+    acad_page_nav_title, acad_page_heading, acad_page_intro,
+    acad_level_1_icon, acad_level_1_title, acad_level_1_body,
+    acad_level_2_icon, acad_level_2_title, acad_level_2_body,
+    acad_level_3_icon, acad_level_3_title, acad_level_3_body,
+    acad_level_4_icon, acad_level_4_title, acad_level_4_body,
+    acad_strengths_title, acad_strength_1, acad_strength_2, acad_strength_3, acad_strength_4, acad_strength_5,
+    about_intro,
+    about_val_1_icon, about_val_1_title, about_val_1_body,
+    about_val_2_icon, about_val_2_title, about_val_2_body,
+    about_val_3_icon, about_val_3_title, about_val_3_body,
+    about_val_4_icon, about_val_4_title, about_val_4_body
   `)
   .eq('id', 1)
   .single();
@@ -103,6 +127,98 @@ if (ss?.hp_leadership_cards) {
 }
 const leadershipHeading = ss?.hp_leadership_heading || 'School Administration';
 const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the school every day.';
+
+// Same defaults saveSchoolSettings()/renderSchoolSettings() falls back to
+// (index.html ~line 16948-16970) when adm_card_steps/adm_card_docs are empty.
+let admCardSteps: Array<{ icon: string; title: string; body: string }> = [];
+try {
+  const raw = typeof ss?.adm_card_steps === 'string' ? JSON.parse(ss.adm_card_steps) : ss?.adm_card_steps;
+  if (Array.isArray(raw) && raw.length) admCardSteps = raw;
+} catch { /* fall through to defaults below */ }
+if (!admCardSteps.length) {
+  admCardSteps = [
+    { icon: '📋', title: 'Complete the Form', body: "Fill in the online admission form with the applicant's personal, academic and health details." },
+    { icon: '📁', title: 'Submit Documents', body: 'Attach recent passport photo, birth certificate, last school report and immunisation card.' },
+    { icon: '💳', title: 'Pay Admission Fee', body: 'Make a secure online payment via Paystack or Remita to confirm your application.' },
+    { icon: '📞', title: 'Interview & Review', body: 'The school will contact you to schedule a brief interview and entrance assessment where applicable.' },
+    { icon: '✅', title: 'Receive Admission', body: 'Successful candidates receive an admission letter and class placement from the school office.' },
+  ];
+}
+
+let admCardDocs: string[] = [];
+try {
+  const raw = typeof ss?.adm_card_docs === 'string' ? JSON.parse(ss.adm_card_docs) : ss?.adm_card_docs;
+  if (Array.isArray(raw) && raw.length) admCardDocs = raw;
+} catch { /* fall through to defaults below */ }
+if (!admCardDocs.length) {
+  admCardDocs = [
+    'Recent passport photograph', 'Original birth certificate',
+    'Last school report card / terminal result', 'Immunisation / health record',
+    'National ID or passport of parent/guardian',
+  ];
+}
+
+// Same defaults the old app falls back to (index.html ~line 17133) when
+// hp_stats is empty.
+let stats: Array<{ icon: string; number: string; suffix: string; caption: string }> = [];
+try {
+  const raw = typeof ss?.hp_stats === 'string' ? JSON.parse(ss.hp_stats) : ss?.hp_stats;
+  if (Array.isArray(raw) && raw.length) stats = raw;
+} catch { /* fall through to defaults below */ }
+if (!stats.length) {
+  stats = [
+    { icon: '👥', number: '25', suffix: '', caption: 'Average class size' },
+    { icon: '🏫', number: '3', suffix: ' levels', caption: 'Nursery, Primary & Secondary' },
+    { icon: '🌍', number: '100', suffix: '%', caption: "Committed to every child's growth" },
+  ];
+}
+
+// Same defaults window._HP_LIFE_DEFAULTS falls back to (index.html
+// ~line 18138) when hp_life_tabs is empty.
+let lifeTabs: Array<{ icon: string; label: string; title: string; body: string; cta: string; img: string }> = [];
+try {
+  const raw = typeof ss?.hp_life_tabs === 'string' ? JSON.parse(ss.hp_life_tabs) : ss?.hp_life_tabs;
+  if (Array.isArray(raw) && raw.length) lifeTabs = raw;
+} catch { /* fall through to defaults below */ }
+if (!lifeTabs.length) {
+  lifeTabs = [
+    { icon: '⚽', label: 'Athletics & Sports', title: 'Athletics & Sports',
+      body: 'From the football pitch to the track field, our athletics programme keeps students active, resilient, and team-spirited — building discipline and camaraderie every season.',
+      cta: 'Join a Team', img: '' },
+    { icon: '🌟', label: 'Talents Hunt', title: 'Talents Hunt',
+      body: "Our annual Talents Hunt gives every student a stage. Whether it's singing, spoken word, dance, drama, or comedy — students shine in front of the whole school community.",
+      cta: 'Discover Yours', img: '' },
+    { icon: '🎭', label: 'Clubs & Activities', title: 'Clubs & Activities',
+      body: 'From the Debate Club to the Literary and Science Clubs — every club is student-led and faculty-supported, fostering leadership and creativity at every level.',
+      cta: 'Find Your Club', img: '' },
+    { icon: '🎯', label: 'Career Guidance', title: 'Career Guidance',
+      body: 'Our counsellors walk alongside students from JSS1 through SS3, helping them identify strengths, explore professions, and make informed choices about their future.',
+      cta: 'Plan Your Future', img: '' },
+    { icon: '🎉', label: 'Celebrations & Events', title: 'Celebrations & Events',
+      body: "End-of-term parties, graduation ceremonies, cultural days, and prize-giving events — joyful moments that bring students, staff, and families together and create lasting memories.",
+      cta: "See What's On", img: '' },
+  ];
+}
+
+const academicLevelDefaults = [
+  { icon: '🧸', title: 'Crèche & Nursery', body: 'Our Early Years programme provides a safe, stimulating environment where little ones build foundational language, numeracy, and social skills through play-based learning.' },
+  { icon: '✏️', title: 'Primary (Pry 1 – 6)', body: 'A structured, engaging curriculum covering English, Mathematics, Basic Science, Social Studies, Cultural & Creative Arts, and more — aligned with the Nigerian national curriculum.' },
+  { icon: '📐', title: 'Junior Secondary (JSS 1 – 3)', body: 'Students deepen knowledge across core subjects, begin STEM specialisation, and develop critical thinking skills to prepare for the BECE and senior school transition.' },
+  { icon: '🎓', title: 'Senior Secondary (SSS 1 – 3)', body: 'Science, Arts and Commercial tracks allow students to focus on their strengths and career aspirations, preparing thoroughly for WAEC, NECO, JAMB and beyond.' },
+];
+const academicStrengthDefaults = [
+  'Strong pass rates in WAEC & NECO examinations',
+  'CBT-based entrance assessments for fair placement',
+  'Regular inter-school academic competitions',
+  'Dedicated STEM lab and digital learning resources',
+  'Small class sizes for personalised attention',
+];
+const aboutValueDefaults = [
+  { icon: '💡', title: 'Learning with Purpose', body: `At ${ss?.school_name || 'our school'}, a world-class education cultivates critical thinking, creative problem-solving, and the essential qualities of global citizenship.` },
+  { icon: '🕊️', title: 'Peace through Understanding', body: 'We believe knowledge is most powerful when paired with humility. Our students learn to listen deeply, think critically, and lead with wisdom.' },
+  { icon: '💪', title: 'Strength through Difference', body: 'Diversity is not a challenge to manage — it is a strength to celebrate. We build a community where every background and viewpoint is welcomed.' },
+  { icon: '🤝', title: 'Empathy in Action', body: 'Compassion is not a feeling alone — it is a choice we make every day. We nurture students who see needs around them and respond with genuine care.' },
+];
 ---
 <StaffLayout title="School Settings">
   <div class="flex flex-col gap-6 max-w-[760px]">
@@ -246,6 +362,245 @@ const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the
       </form>
     </Card>
 
+    <Card title="Payment Gateways & Bank Info">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="paygw-status">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Paystack Public Key</label>
+          <input name="paystack_public_key" value={ss?.paystack_public_key || ''} placeholder="pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          <p class="text-xs text-brand-brown-light">Secret key stays server-side (Supabase Vault / edge function) — never entered here.</p>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Remita Public Key</label>
+          <input name="remita_public_key" value={ss?.remita_public_key || ''} placeholder="paste your Remita public key here"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Bank Name</label>
+            <input name="bank_name" value={ss?.bank_name || ''} placeholder="e.g. First Bank Nigeria"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Account Name</label>
+            <input name="bank_account_name" value={ss?.bank_account_name || ''} placeholder="e.g. Victorious International Schools"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Account Number</label>
+            <input name="bank_account_number" value={ss?.bank_account_number || ''} placeholder="e.g. 0123456789"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Payment Phone (cash/transfer)</label>
+            <input name="payment_phone" value={ss?.payment_phone || ''} placeholder="e.g. 08012345678"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Payment Gateways &amp; Bank Info
+          </button>
+          <span id="paygw-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Email Configuration (EmailJS)">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="email-status">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">EmailJS Service ID</label>
+            <input name="emailjs_service_id" value={ss?.emailjs_service_id || ''} placeholder="service_xxxxxxx"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">EmailJS Template ID</label>
+            <input name="emailjs_template_id" value={ss?.emailjs_template_id || ''} placeholder="template_xxxxxxx"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">EmailJS Public Key</label>
+            <input name="emailjs_public_key" value={ss?.emailjs_public_key || ''}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">School Reply-to Email</label>
+            <input name="reply_email" type="email" value={ss?.reply_email || ''} placeholder="admin@yourschool.edu"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Email Configuration
+          </button>
+          <span id="email-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Admissions & Fees Setup">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="fees-status">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Default Admission Fee (₦)</label>
+          <input name="admission_fee_default" type="number" min="0" value={ss?.admission_fee_default ?? 0}
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          <p class="text-xs text-brand-brown-light">Applies to all classes unless overridden per class. Per-class overrides aren't built yet — separate sub-system, next phase.</p>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Exam Invigilator PIN (4–8 digits)</label>
+          <input name="invigilator_pin" type="password" maxlength="8" value={ss?.invigilator_pin || ''} placeholder="e.g. 1234"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" style="letter-spacing:.1em" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">APK Download URL</label>
+          <input name="apk_url" value={ss?.apk_url || ''} placeholder="https://github.com/.../VIS-Portal-signed.apk"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Admissions &amp; Fees Setup
+          </button>
+          <span id="fees-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Public Homepage Controls">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="public-status">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Public Tagline</label>
+          <input name="public_tagline" value={ss?.public_tagline || ''} placeholder="e.g. Nurturing Excellence Since 1999"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        {([
+          ['public_contact_visible', 'Show Contact Section', ss?.public_contact_visible],
+          ['public_admission_btn', 'Show Admission Button', ss?.public_admission_btn],
+          ['public_cbt_btn', 'Show CBT Button', ss?.public_cbt_btn],
+          ['public_feed_visible', 'Show Public Feed', ss?.public_feed_visible],
+        ] as const).map(([name, label, val]) => (
+          <label class="flex items-center justify-between bg-brand-cream rounded-md px-4 py-3">
+            <span class="text-sm font-medium text-brand-brown-dark">{label}</span>
+            <input type="checkbox" name={name} checked={val !== false} class="w-4 h-4" />
+          </label>
+        ))}
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Public Homepage Controls
+          </button>
+          <span id="public-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Social Media Links">
+      <form class="simple-settings-form flex flex-col gap-3" data-status="social-status">
+        {([
+          ['social_facebook', 'Facebook', 'https://facebook.com/yourpage'],
+          ['social_instagram', 'Instagram', 'https://instagram.com/yourprofile'],
+          ['social_youtube', 'YouTube', 'https://youtube.com/@yourchannel'],
+          ['social_linkedin', 'LinkedIn', 'https://linkedin.com/school/yourpage'],
+          ['social_twitter', 'X / Twitter', 'https://x.com/yourhandle'],
+        ] as const).map(([name, label, placeholder]) => (
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">{label}</label>
+            <input name={name} type="url" value={(ss as any)?.[name] || ''} placeholder={placeholder}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+        ))}
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Social Media Links
+          </button>
+          <span id="social-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="School News Section Header">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="news-status">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Heading</label>
+          <input name="hp_news_heading" value={ss?.hp_news_heading || ''} placeholder="School News"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Subtext</label>
+          <textarea name="hp_news_subtext" rows="2" placeholder="Stories about the people, ideas, and events…"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{ss?.hp_news_subtext || ''}</textarea>
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save News Section Header
+          </button>
+          <span id="news-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Admission Info Card">
+      <form id="adm-card-form" class="flex flex-col gap-4">
+        <div class="flex flex-col gap-1">
+          <span class="text-sm font-medium text-brand-brown-dark">Banner Image</span>
+          <div class="flex items-center gap-3 flex-wrap">
+            <div id="adm-card-img-preview" class="h-[70px] w-[130px] rounded-md border border-brand-cream-dark bg-brand-cream flex items-center justify-center overflow-hidden text-2xl">
+              {ss?.adm_card_image_url ? <img src={ss.adm_card_image_url} alt="" class="h-full w-full object-cover" /> : '🏫'}
+            </div>
+            <label class="text-xs font-medium px-3 py-1.5 rounded-sm border border-brand-cream-dark bg-white cursor-pointer hover:bg-brand-cream">
+              Upload Banner
+              <input type="file" accept="image/*" class="hidden" id="adm-card-img-input" />
+            </label>
+            <input type="hidden" name="adm_card_image_url" id="adm-card-img-hidden" value={ss?.adm_card_image_url || ''} />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 items-end">
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Status Badge Text</label>
+            <input name="adm_card_badge" value={ss?.adm_card_badge || 'ADMISSIONS OPEN'}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <label class="flex items-center justify-between bg-brand-cream rounded-md px-4 py-3">
+            <span class="text-sm font-medium text-brand-brown-dark">Show Badge</span>
+            <input type="checkbox" name="adm_card_badge_show" checked={ss?.adm_card_badge_show !== false} class="w-4 h-4" />
+          </label>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Welcome / Intro Text</label>
+          <textarea name="adm_card_intro" rows="3"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{ss?.adm_card_intro || ''}</textarea>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span class="text-sm font-medium text-brand-brown-dark">How to Apply — Steps</span>
+          {Array.from({ length: 5 }).map((_, i) => {
+            const step = admCardSteps[i] || { icon: '', title: '', body: '' };
+            return (
+              <div class="border border-brand-cream-dark rounded-md p-3 bg-brand-cream flex gap-2 flex-wrap">
+                <input class="adm-step-icon w-16 text-center font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" placeholder="📋" value={step.icon} />
+                <input class="adm-step-title flex-1 min-w-[140px] font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" placeholder="Step title" value={step.title} />
+                <input class="adm-step-body w-full font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" placeholder="Description" value={step.body} />
+              </div>
+            );
+          })}
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Required Documents (one per line)</label>
+          <textarea id="adm-card-docs" rows="6"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{admCardDocs.join('\n')}</textarea>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Admission Info Card
+          </button>
+          <span id="adm-card-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
     <Card title="Signatures, Names & Stamps">
       <SignatoriesEditor client:load initialAdmission={admissionSignatory} initialFinance={financeSignatory} />
     </Card>
@@ -261,6 +616,238 @@ const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the
         initialHeading={leadershipHeading}
         initialSubtitle={leadershipSubtitle}
       />
+    </Card>
+
+    <Card title={'"Life at VIS" Student Life Tabs'}>
+      <LifeTabsEditor client:load initialTabs={lifeTabs} />
+    </Card>
+
+    <Card title="Homepage Hero Section Text">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="hero-status">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Location Tag (below school name)</label>
+          <input name="hp_hero_tag" value={ss?.hp_hero_tag || 'Okpok-Ikpa Okoyong · Cross River State, Nigeria'} placeholder="e.g. Lagos Island · Lagos, Nigeria"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Main Headline</label>
+          <input name="hp_hero_headline" value={ss?.hp_hero_headline || 'Where young minds fuel global change.'}
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Subtitle Paragraph</label>
+          <textarea name="hp_hero_sub" rows="3"
+            class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{ss?.hp_hero_sub || 'From Nursery through Senior Secondary, Victorious International Schools shapes confident, curious, and compassionate citizens — rooted in community, ready for the world.'}</textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Primary CTA Button Text</label>
+            <input name="hp_hero_cta_primary" value={ss?.hp_hero_cta_primary || 'Apply Now'}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Secondary CTA Button Text</label>
+            <input name="hp_hero_cta_secondary" value={ss?.hp_hero_cta_secondary || 'Explore the School ↓'}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+        </div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Hero Section Text
+          </button>
+          <span id="hero-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Key Stats (Hero & Mobile Stats)">
+      <form id="stats-form" class="flex flex-col gap-4">
+        <p class="text-xs text-brand-brown-light">Edit the 3 statistics shown on the hero panel (desktop) and the stats carousel (mobile).</p>
+        {stats.map((s, i) => (
+          <div class="border border-brand-cream-dark rounded-md p-3 bg-brand-cream">
+            <div class="text-sm font-medium text-brand-brown-dark mb-2">Stat {i + 1}</div>
+            <div class="grid gap-2" style="grid-template-columns:70px 90px 90px 1fr;">
+              <input class="stat-icon font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white text-center" placeholder="👥" value={s.icon} />
+              <input class="stat-number font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" placeholder="25" value={s.number} />
+              <input class="stat-suffix font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" placeholder=" levels" value={s.suffix} />
+              <input class="stat-caption font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" placeholder="Average class size" value={s.caption} />
+            </div>
+          </div>
+        ))}
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Key Stats
+          </button>
+          <span id="stats-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title={'"School Values" Story Cards'}>
+      <form class="simple-settings-form flex flex-col gap-6" data-status="story-status">
+        <p class="text-xs text-brand-brown-light">
+          Card 1 ("Learning with Purpose") has no photo — it uses CSS art. Cards 2-4 each have a photo.
+        </p>
+
+        <div class="border border-brand-cream-dark rounded-md p-3 bg-brand-cream flex flex-col gap-3">
+          <div class="text-sm font-medium text-brand-brown-dark">🎨 Card 1 — Learning with Purpose</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-brand-brown-dark">Eyebrow Label</label>
+              <input name="hp_story_1_eyebrow" value={ss?.hp_story_1_eyebrow || 'Our Purpose'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-brand-brown-dark">Heading</label>
+              <input name="hp_story_1_heading" value={ss?.hp_story_1_heading || 'Learning with purpose'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Body Text</label>
+            <textarea name="hp_story_1_body" rows="3" class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{ss?.hp_story_1_body || 'At Victorious International Schools, a world-class education cultivates critical thinking, creative problem-solving, and the essential qualities of global citizenship — rooted in the values of our community.'}</textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-brand-brown-dark">Button 1 Text</label>
+              <input name="hp_story_1_cta1" value={ss?.hp_story_1_cta1 || 'Explore Academics'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-brand-brown-dark">Button 2 Text</label>
+              <input name="hp_story_1_cta2" value={ss?.hp_story_1_cta2 || 'Admissions & Aid'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+            </div>
+          </div>
+        </div>
+
+        {([
+          { key: 'wisdom', num: 2, emoji: '🎓', label: 'Wisdom', headingDefault: 'Peace through understanding',
+            bodyDefault: 'We believe knowledge is most powerful when it is paired with humility. Our students learn to listen deeply, think critically, and lead with the wisdom that comes from diverse perspectives.' },
+          { key: 'courage', num: 3, emoji: '🎤', label: 'Courage', headingDefault: 'Strength through difference',
+            bodyDefault: 'Courage means showing up fully — sharing ideas that challenge, standing for what is right, and finding boldness even when it is difficult. Our students learn that their unique voices are their greatest strength.' },
+          { key: 'compassion', num: 4, emoji: '🤝', label: 'Compassion', headingDefault: 'Empathy in action',
+            bodyDefault: 'Compassion is not a feeling alone — it is a choice we make every day. We nurture students who see the needs around them and respond with genuine care, building communities stronger than any individual.' },
+        ] as const).map((c) => (
+          <div class="border border-brand-cream-dark rounded-md p-3 bg-brand-cream flex flex-col gap-3">
+            <div class="text-sm font-medium text-brand-brown-dark">{c.emoji} Card {c.num} — {c.label}</div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-brand-brown-dark">Heading</label>
+              <input name={`hp_story_${c.num}_heading`} value={(ss as any)?.[`hp_story_${c.num}_heading`] || c.headingDefault} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-brand-brown-dark">Body Text</label>
+              <textarea name={`hp_story_${c.num}_body`} rows="3" class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{(ss as any)?.[`hp_story_${c.num}_body`] || c.bodyDefault}</textarea>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-brand-brown-dark">Photo</span>
+              <div class="flex items-center gap-3 flex-wrap">
+                <div id={`preview-story-${c.key}`} class="h-16 w-[90px] rounded-md border border-brand-cream-dark bg-white flex items-center justify-center overflow-hidden text-xl">
+                  {(ss as any)?.[`hp_story_${c.key}`] ? <img src={(ss as any)[`hp_story_${c.key}`]} alt="" class="h-full w-full object-cover" /> : c.emoji}
+                </div>
+                <label class="text-xs font-medium px-3 py-1.5 rounded-sm border border-brand-cream-dark bg-white cursor-pointer hover:bg-brand-cream">
+                  Upload Image
+                  <input type="file" accept="image/*" class="hidden" data-upload-field={`story-${c.key}`} />
+                </label>
+                <input type="hidden" id={`id-story-${c.key}`} name={`hp_story_${c.key}`} value={(ss as any)?.[`hp_story_${c.key}`] || ''} />
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Story Cards
+          </button>
+          <span id="story-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="Academics Page">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="acad-status">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Nav Bar Title</label>
+            <input name="acad_page_nav_title" value={ss?.acad_page_nav_title || 'Academics at VIS'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Page Heading</label>
+            <input name="acad_page_heading" value={ss?.acad_page_heading || 'World-Class Learning'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Intro Paragraph</label>
+          <textarea name="acad_page_intro" rows="4" class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{ss?.acad_page_intro || `At ${ss?.school_name || 'Victorious International Schools'}, our academic programme cultivates critical thinking, creativity and a lifelong love of learning — from Crèche right through to Senior Secondary School. Every learner gets the attention, resources and encouragement they need to thrive.`}</textarea>
+        </div>
+
+        <div class="text-xs font-semibold text-brand-brown-dark uppercase tracking-wide">School Levels</div>
+        {[1, 2, 3, 4].map((n) => {
+          const def = academicLevelDefaults[n - 1];
+          return (
+            <div class="border border-brand-cream-dark rounded-md p-3 bg-brand-cream flex flex-col gap-2">
+              <div class="text-sm font-medium text-brand-brown-dark">{def.icon} Level {n}</div>
+              <div class="grid grid-cols-2 gap-4">
+                <input name={`acad_level_${n}_icon`} value={(ss as any)?.[`acad_level_${n}_icon`] || def.icon} placeholder={def.icon}
+                  class="font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white text-center" />
+                <input name={`acad_level_${n}_title`} value={(ss as any)?.[`acad_level_${n}_title`] || def.title} placeholder={def.title}
+                  class="font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" />
+              </div>
+              <textarea name={`acad_level_${n}_body`} rows="2" class="font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white">{(ss as any)?.[`acad_level_${n}_body`] || def.body}</textarea>
+            </div>
+          );
+        })}
+
+        <div class="text-xs font-semibold text-brand-brown-dark uppercase tracking-wide">🏆 Academic Strengths (bullet list)</div>
+        <p class="text-xs text-brand-brown-light -mt-2">One bullet point per line. Leave a line blank to hide it.</p>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Strengths Section Title</label>
+          <input name="acad_strengths_title" value={ss?.acad_strengths_title || 'Our Academic Strengths'} class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+        </div>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-brand-brown-dark">Bullet {n}</label>
+            <input name={`acad_strength_${n}`} value={(ss as any)?.[`acad_strength_${n}`] || academicStrengthDefaults[n - 1]} placeholder={academicStrengthDefaults[n - 1]}
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white" />
+          </div>
+        ))}
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save Academics Page
+          </button>
+          <span id="acad-status" class="text-sm"></span>
+        </div>
+      </form>
+    </Card>
+
+    <Card title="About Us Page">
+      <form class="simple-settings-form flex flex-col gap-4" data-status="about-status">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-brand-brown-dark">Intro Paragraph</label>
+          <textarea name="about_intro" rows="4" class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white">{ss?.about_intro || 'We are a co-educational school located in Cross River State, Nigeria, nurturing learners from Crèche through Senior Secondary School. Our programme builds character, wisdom and academic excellence within a safe, values-centred environment.'}</textarea>
+        </div>
+
+        <div class="text-xs font-semibold text-brand-brown-dark uppercase tracking-wide">Core Values (shown as cards on the About page)</div>
+        {[1, 2, 3, 4].map((n) => {
+          const def = aboutValueDefaults[n - 1];
+          return (
+            <div class="border border-brand-cream-dark rounded-md p-3 bg-brand-cream flex flex-col gap-2">
+              <div class="text-sm font-medium text-brand-brown-dark">{def.icon} Value {n}</div>
+              <div class="grid grid-cols-2 gap-4">
+                <input name={`about_val_${n}_icon`} value={(ss as any)?.[`about_val_${n}_icon`] || def.icon} placeholder={def.icon}
+                  class="font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white text-center" />
+                <input name={`about_val_${n}_title`} value={(ss as any)?.[`about_val_${n}_title`] || def.title} placeholder={def.title}
+                  class="font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white" />
+              </div>
+              <textarea name={`about_val_${n}_body`} rows="2" class="font-body text-sm rounded-sm border border-brand-cream-dark px-2 py-2 bg-white">{(ss as any)?.[`about_val_${n}_body`] || def.body}</textarea>
+            </div>
+          );
+        })}
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm px-4 py-2 rounded-sm font-medium">
+            Save About Us Page
+          </button>
+          <span id="about-status" class="text-sm"></span>
+        </div>
+      </form>
     </Card>
   </div>
 </StaffLayout>
@@ -333,7 +920,7 @@ const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the
       const res = await fetch('/api/admin/settings/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identity }),
+        body: JSON.stringify({ fields: identity }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Save failed.');
@@ -361,7 +948,7 @@ const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the
       const res = await fetch('/api/admin/settings/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ calendar }),
+        body: JSON.stringify({ fields: calendar }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Save failed.');
@@ -399,7 +986,7 @@ const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          colours: { primary_color: priHex.value, secondary_color: secHex.value },
+          fields: { primary_color: priHex.value, secondary_color: secHex.value },
         }),
       });
       const data = await res.json();
@@ -409,6 +996,131 @@ const leadershipSubtitle = ss?.hp_leadership_subtitle || 'The people guiding the
     } catch (err) {
       coloursStatus.textContent = err instanceof Error ? err.message : 'Save failed.';
       coloursStatus.className = 'text-sm text-danger-700';
+    }
+  });
+
+  // ── Generic wiring for every plain field-group form (Payment Gateways,
+  // Email Config, Admissions & Fees, Public Controls, Social Links, News
+  // Header) — one handler instead of six near-identical copies. Each
+  // form just needs named inputs/textareas/checkboxes and a
+  // data-status="<id>" pointing at its status <span>.
+  document.querySelectorAll<HTMLFormElement>('form.simple-settings-form').forEach((form) => {
+    const statusEl = document.getElementById(form.dataset.status || '');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.className = 'text-sm text-brand-brown-light'; }
+      const fields: Record<string, string | boolean> = {};
+      form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[name]').forEach((el) => {
+        if (el instanceof HTMLInputElement && el.type === 'checkbox') {
+          fields[el.name] = el.checked;
+        } else {
+          fields[el.name] = el.value;
+        }
+      });
+      try {
+        const res = await fetch('/api/admin/settings/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Save failed.');
+        if (statusEl) { statusEl.textContent = '✅ Saved.'; statusEl.className = 'text-sm text-success-700'; }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = err instanceof Error ? err.message : 'Save failed.';
+          statusEl.className = 'text-sm text-danger-700';
+        }
+      }
+    });
+  });
+
+  // ── Admission Info Card (banner upload + fixed 5 steps + docs list) ──
+  const admImgInput = document.getElementById('adm-card-img-input') as HTMLInputElement;
+  admImgInput.addEventListener('change', async () => {
+    const file = admImgInput.files?.[0];
+    if (!file) return;
+    const preview = document.getElementById('adm-card-img-preview')!;
+    const hidden = document.getElementById('adm-card-img-hidden') as HTMLInputElement;
+    preview.textContent = 'Uploading…';
+    try {
+      const url = await uploadToCloudinary(file, 'vis/school');
+      hidden.value = url;
+      preview.innerHTML = `<img src="${url}" alt="" class="h-full w-full object-cover">`;
+    } catch (e) {
+      preview.textContent = '🏫';
+      alert(e instanceof Error ? e.message : 'Upload failed.');
+    } finally {
+      admImgInput.value = '';
+    }
+  });
+
+  const admForm = document.getElementById('adm-card-form') as HTMLFormElement;
+  const admStatus = document.getElementById('adm-card-status')!;
+  admForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    admStatus.textContent = 'Saving…';
+    admStatus.className = 'text-sm text-brand-brown-light';
+
+    const steps = Array.from(admForm.querySelectorAll('.adm-step-icon')).map((iconEl, i) => ({
+      icon: (iconEl as HTMLInputElement).value,
+      title: (admForm.querySelectorAll('.adm-step-title')[i] as HTMLInputElement).value,
+      body: (admForm.querySelectorAll('.adm-step-body')[i] as HTMLInputElement).value,
+    }));
+    const docs = (document.getElementById('adm-card-docs') as HTMLTextAreaElement).value
+      .split('\n').map((d) => d.trim()).filter(Boolean);
+
+    const fields = {
+      adm_card_image_url: (document.getElementById('adm-card-img-hidden') as HTMLInputElement).value,
+      adm_card_badge: (admForm.querySelector('[name=adm_card_badge]') as HTMLInputElement).value,
+      adm_card_badge_show: (admForm.querySelector('[name=adm_card_badge_show]') as HTMLInputElement).checked,
+      adm_card_intro: (admForm.querySelector('[name=adm_card_intro]') as HTMLTextAreaElement).value,
+    };
+
+    try {
+      const res = await fetch('/api/admin/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields, adm_card_steps: steps, adm_card_docs: docs }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Save failed.');
+      admStatus.textContent = '✅ Saved.';
+      admStatus.className = 'text-sm text-success-700';
+    } catch (err) {
+      admStatus.textContent = err instanceof Error ? err.message : 'Save failed.';
+      admStatus.className = 'text-sm text-danger-700';
+    }
+  });
+
+  // ── Key Stats (fixed 3-item array, same pattern as adm-card-form's
+  // step collection above — plain class-based querySelectorAll, no
+  // React island needed for a fixed-count list with no images) ──
+  const statsForm = document.getElementById('stats-form') as HTMLFormElement;
+  const statsStatus = document.getElementById('stats-status')!;
+  statsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    statsStatus.textContent = 'Saving…';
+    statsStatus.className = 'text-sm text-brand-brown-light';
+    const stats = Array.from(statsForm.querySelectorAll('.stat-icon')).map((iconEl, i) => ({
+      icon: (iconEl as HTMLInputElement).value,
+      number: (statsForm.querySelectorAll('.stat-number')[i] as HTMLInputElement).value,
+      suffix: (statsForm.querySelectorAll('.stat-suffix')[i] as HTMLInputElement).value,
+      caption: (statsForm.querySelectorAll('.stat-caption')[i] as HTMLInputElement).value,
+    }));
+    try {
+      const res = await fetch('/api/admin/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hp_stats: stats }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Save failed.');
+      statsStatus.textContent = '✅ Saved.';
+      statsStatus.className = 'text-sm text-success-700';
+    } catch (err) {
+      statsStatus.textContent = err instanceof Error ? err.message : 'Save failed.';
+      statsStatus.className = 'text-sm text-danger-700';
     }
   });
 </script>
