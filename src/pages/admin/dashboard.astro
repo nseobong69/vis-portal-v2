@@ -1,61 +1,187 @@
 ---
-// Admin Portal — Dashboard
-// Section 4's admin-tier dashboard requirement: real routing/auth proven
-// here with genuine row-count queries against a handful of core tables
-// (students, classes, staff via profiles). Not ported: today's-classes /
-// pending-attendance-and-results widgets the Feature Checklist calls for
-// (those need the attendance/results shape confirmed first) and the
-// super_admin-only extra widgets mentioned in Section 4.
+// Ports renderDashboard()'s ADMIN/SUPER ADMIN branch and
+// renderAdminLikeDash() (head_teacher/principal/proprietor) from the old
+// app (index.html, lines 7494–7582). Real route at /admin/dashboard —
+// hitting this URL directly returns this file's actual server-rendered
+// HTML, per Section 3's hard requirement. Replaces the placeholder stub
+// that shipped with the rest of the admin/ folder.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
+// ── Step 1: server-side auth check BEFORE any data is fetched ──
+// Matches renderDashboard()'s dispatch: super_admin/admin get the full
+// stat dashboard; proprietor/head_teacher/principal get the reduced
+// "admin-like" quick-actions card (Phase 0 role table, Section 3).
 const auth = await checkAuth(Astro.cookies, [
   'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
 ]);
-
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
 if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
+const { role, userId } = auth;
+
+// index.html's ROLE dispatch: only super_admin/admin see the full stat
+// dashboard below; the other three roles get the reduced card.
+const isFullDash = role === 'super_admin' || role === 'admin';
 
 const supabase = createServerSupabase(Astro.cookies);
 
-const counts = await Promise.all([
-  supabase.from('students').select('id', { count: 'exact', head: true }),
-  supabase.from('classes').select('id', { count: 'exact', head: true }),
-  supabase.from('profiles').select('id', { count: 'exact', head: true }),
-  supabase.from('fee_payments').select('id', { count: 'exact', head: true }),
-]);
+// ── Greeting + today's date (renderDashboard, lines 7495–7499) ──
+let fullName = 'User';
+try {
+  const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
+  if (profile?.full_name) fullName = profile.full_name;
+} catch (e) {}
+const firstName = fullName.split(' ')[0];
+const hr = new Date().getHours();
+const greeting = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
-const stats = [
-  { label: 'Students', value: counts[0].count, error: !!counts[0].error },
-  { label: 'Classes', value: counts[1].count, error: !!counts[1].error },
-  { label: 'Staff/Profiles', value: counts[2].count, error: !!counts[2].error },
-  { label: 'Fee Payments', value: counts[3].count, error: !!counts[3].error },
+// ── Stat cards + fee bars (only fetched for the full dashboard) ──
+let totalStudents = 0, staffCount = 0, feesCollected = 0, classCount = 0;
+let paidPct = 0, partialPct = 0, unpaidPct = 0;
+let announcements: { title: string; created_at: string }[] = [];
+
+if (isFullDash) {
+  try {
+    const [studentsRes, staffRes, feesRes, classesRes] = await Promise.all([
+      supabase.from('students').select('*', { count: 'exact', head: true }),
+      supabase.from('profiles').select('*', { count: 'exact', head: true }).neq('role', 'student'),
+      supabase.from('fee_payments').select('amount_paid').in('status', ['paid', 'partial']),
+      supabase.from('classes').select('*', { count: 'exact', head: true }),
+    ]);
+    totalStudents = studentsRes.count || 0;
+    staffCount = staffRes.count || 0;
+    feesCollected = (feesRes.data || []).reduce((sum: number, row: any) => sum + (parseFloat(row.amount_paid) || 0), 0);
+    classCount = classesRes.count || 0;
+  } catch (e) {}
+
+  try {
+    const { data: allPayments } = await supabase.from('fee_payments').select('status');
+    const total = (allPayments || []).length || 1;
+    paidPct = Math.round((allPayments || []).filter((p: any) => p.status === 'paid').length / total * 100);
+    partialPct = Math.round((allPayments || []).filter((p: any) => p.status === 'partial').length / total * 100);
+    unpaidPct = 100 - paidPct - partialPct;
+  } catch (e) {}
+
+  try {
+    const { data } = await supabase.from('announcements').select('title, created_at').order('created_at', { ascending: false }).limit(5);
+    announcements = data || [];
+  } catch (e) {}
+}
+
+const fmtMoney = (n: number) => '₦' + n.toLocaleString();
+const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+
+// Quick actions (renderDashboard lines 7538–7546 for full dash,
+// renderAdminLikeDash lines 7574–7580 for the reduced one). Left as
+// plain links to each screen's real route rather than the old app's
+// onclick()-driven SPA nav.
+const financeRoles = ['super_admin', 'admin', 'bursar', 'proprietor'];
+const fullQuickActions = [
+  { icon: '👤', label: 'Add Student', href: '/admin/students' },
+  { icon: '🧑‍🏫', label: 'Add Staff', href: '/admin/staff' },
+  { icon: '🏫', label: 'Classes', href: '/admin/classes' },
+  { icon: '📖', label: 'Results', href: '/admin/results' },
+  { icon: '💻', label: 'CBT Exams', href: '/admin/cbt' },
+  { icon: '📅', label: 'Attendance', href: '/admin/attendance' },
+  { icon: '💰', label: 'Finance', href: '/admin/fees' },
+  { icon: '📢', label: 'Announce', href: '/admin/announcements' },
+];
+const reducedQuickActions = [
+  { icon: '👥', label: 'View Students / Pupils', href: '/admin/students' },
+  { icon: '📖', label: 'Results', href: '/admin/results' },
+  { icon: '📅', label: 'Attendance', href: '/admin/attendance' },
+  ...(financeRoles.includes(role) ? [{ icon: '💰', label: 'Finance', href: '/admin/fees' }] : []),
+  { icon: '📢', label: 'Announcements', href: '/admin/announcements' },
 ];
 ---
-<AdminLayout title="Dashboard" activePath="/admin/dashboard" role={auth.role}>
+<AdminLayout title="Dashboard" activePath="/admin/dashboard" role={role}>
   <div class="mb-6">
-    <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">
-      Welcome, {auth.role}
-    </h1>
-    <p class="text-sm text-brand-brown-light mt-1">
-      Admin-tier dashboard — real counts below, widgets beyond that are not ported yet.
-    </p>
+    <h1 class="font-heading font-extrabold text-2xl text-brand-brown-dark">{greeting}, {firstName} 👋</h1>
+    <p class="text-sm text-brand-brown-light mt-1">{today}</p>
   </div>
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    {stats.map((s) => (
-      <Card>
-        <p class="text-xs font-heading uppercase tracking-wide text-brand-brown-light">{s.label}</p>
-        <p class="text-3xl font-heading font-bold text-brand-brown-dark mt-1">
-          {s.error ? '—' : (s.value ?? 0)}
-        </p>
-        {s.error && <p class="text-[11px] text-red-600 mt-1">query failed — table/columns unverified</p>}
+
+  {isFullDash ? (
+    <>
+      <div class="grid gap-3.5 mb-6" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
+        <Card><div class="text-xs font-semibold text-brand-brown-light mb-1">Total Students</div><div class="text-2xl font-bold text-brand-brown-dark">{totalStudents}</div></Card>
+        <Card><div class="text-xs font-semibold text-brand-brown-light mb-1">Teaching Staff</div><div class="text-2xl font-bold text-info-700">{staffCount}</div></Card>
+        <Card><div class="text-xs font-semibold text-brand-brown-light mb-1">Fees Collected</div><div class="text-2xl font-bold text-success-700">{fmtMoney(feesCollected)}</div></Card>
+        <Card><div class="text-xs font-semibold text-brand-brown-light mb-1">Active Classes</div><div class="text-2xl font-bold text-warning-700">{classCount}</div></Card>
+      </div>
+
+      <Card title="Quick Actions" className="mb-5">
+        <div class="grid gap-2.5" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));">
+          {fullQuickActions.map((qa) => (
+            <a href={qa.href} class="flex flex-col items-center gap-1.5 rounded-lg border border-brand-cream-dark py-3 px-2 text-xs font-semibold text-brand-brown-dark hover:bg-brand-cream transition-colors">
+              <span class="text-lg leading-none">{qa.icon}</span>
+              {qa.label}
+            </a>
+          ))}
+        </div>
       </Card>
-    ))}
-  </div>
+
+      <div class="grid gap-4" style="grid-template-columns:2fr 1fr;">
+        <Card title="Recent Announcements">
+          {announcements.length ? (
+            <div>
+              {announcements.map((a) => (
+                <div class="flex items-center gap-2.5 py-2 border-b border-brand-cream-dark last:border-0">
+                  <div class="w-7 h-7 rounded-md bg-brand-cream flex items-center justify-center text-brand-brown-dark text-xs flex-shrink-0">📢</div>
+                  <div>
+                    <div class="text-[12.5px] font-medium text-brand-brown-dark">{a.title}</div>
+                    <div class="text-[11px] text-brand-brown-light">{fmtDate(a.created_at)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p class="text-[13px] text-brand-brown-light">No activity yet.</p>
+          )}
+        </Card>
+        <Card title="Fee Collection">
+          {[
+            { label: 'Fully Paid', pct: paidPct, color: 'var(--success)' },
+            { label: 'Part Payment', pct: partialPct, color: 'var(--warning)' },
+            { label: 'Unpaid', pct: unpaidPct, color: 'var(--danger)' },
+          ].map((row) => (
+            <div class="mb-2.5">
+              <div class="flex justify-between text-xs font-semibold mb-1">
+                <span class="text-brand-brown-dark">{row.label}</span>
+                <span style={`color:${row.color}`}>{row.pct}%</span>
+              </div>
+              <div class="h-2 rounded bg-brand-cream-dark overflow-hidden">
+                <div class="h-full rounded" style={`width:${row.pct}%;background:${row.color}`}></div>
+              </div>
+            </div>
+          ))}
+          <div class="text-2xl font-bold text-brand-brown-dark mt-1">{paidPct}%</div>
+        </Card>
+      </div>
+    </>
+  ) : (
+    <Card title="Quick Actions" className="max-w-[420px]">
+      <div class="flex flex-col gap-2">
+        {reducedQuickActions.map((qa, i) => (
+          <a
+            href={qa.href}
+            class:list={[
+              'flex items-center justify-center gap-2 rounded-md py-2.5 text-sm font-semibold transition-colors',
+              i === 0
+                ? 'bg-brand-brown text-white hover:bg-brand-brown-dark'
+                : 'border border-brand-cream-dark text-brand-brown-dark hover:bg-brand-cream',
+            ]}
+          >
+            <span>{qa.icon}</span> {qa.label}
+          </a>
+        ))}
+      </div>
+    </Card>
+  )}
 </AdminLayout>
