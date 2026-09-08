@@ -183,8 +183,16 @@ const socialLinks = ([
 ] as const).filter(([, url]) => !!url);
 ---
 <PublicLayout title="Home">
-  <!-- ══ HERO ═══════════════════════════════════════════════════════ -->
-  <section class="relative bg-shell-obsidian text-shell-text px-6 py-20 md:py-28">
+  <!-- ══ HERO ═══════════════════════════════════════════════════════
+       hero_image_url (School Identity) renders as a full-bleed
+       background with a dark gradient overlay so the existing text
+       stays readable at the same contrast as the old solid-colour
+       hero. No image set → falls back to the plain bg-shell-obsidian
+       background exactly as before. ══════════════════════════════ -->
+  <section
+    class="relative bg-shell-obsidian text-shell-text px-6 py-20 md:py-28 bg-cover bg-center"
+    style={ss?.hero_image_url ? `background-image:linear-gradient(rgba(10,10,15,.82),rgba(10,10,15,.88)),url('${ss.hero_image_url}')` : undefined}
+  >
     <div class="max-w-[1400px] mx-auto">
       <p class="text-brand-gold text-xs uppercase tracking-widest mb-3">
         {hero.tag}
