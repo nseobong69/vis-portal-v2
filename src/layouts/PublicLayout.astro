@@ -4,12 +4,27 @@
 // the unauthenticated public site (Section 3 still requires them to be
 // real server-rendered routes, just not gated).
 import '../styles/global.css';
+import { createServerSupabase } from '../lib/supabase';
 
 interface Props {
   title: string;
   description?: string;
 }
 const { title, description = 'Victorious International Schools — Okpok-Ikpa Okoyong, Cross River State, Nigeria.' } = Astro.props;
+
+// Nav bar logo + school name — was a static gradient square + hardcoded
+// name before; now pulled from school_settings so it matches what's set
+// in School Identity. Every public page goes through this layout, so
+// fetching here (rather than duplicating in each page) covers all of them.
+const supabase = createServerSupabase(Astro.cookies);
+const { data: ss } = await supabase
+  .from('school_settings')
+  .select('school_name, logo_url')
+  .eq('id', 1)
+  .single();
+
+const schoolName = ss?.school_name || 'Victorious International Schools';
+const logoUrl = ss?.logo_url || '';
 ---
 <!doctype html>
 <html lang="en">
@@ -17,7 +32,7 @@ const { title, description = 'Victorious International Schools — Okpok-Ikpa Ok
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content={description} />
-  <title>{title} · Victorious International Schools</title>
+  <title>{title} · {schoolName}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <!--
@@ -32,8 +47,12 @@ const { title, description = 'Victorious International Schools — Okpok-Ikpa Ok
   <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
     <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2">
-        <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
-        <span class="font-heading font-bold text-brand-gold text-[15px]">Victorious International Schools</span>
+        {logoUrl ? (
+          <img src={logoUrl} alt={schoolName} class="w-9 h-9 rounded-md object-cover" />
+        ) : (
+          <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
+        )}
+        <span class="font-heading font-bold text-brand-gold text-[15px]">{schoolName}</span>
       </a>
       <div class="flex items-center gap-2">
         <a href="/about" class="text-shell-muted hover:text-brand-gold text-sm px-2">About</a>
