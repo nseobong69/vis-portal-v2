@@ -1,4 +1,4 @@
-import { createBrowserSupabase } from './supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Ported 1:1 from the old app's renderResults()/loadSheet()/saveSheet()/
 // calcPos()/showBlockResultModal() (Feature Checklist row 10: Results /
@@ -74,8 +74,11 @@ export interface SheetRow {
 }
 
 /** Mirrors getMyClasses() role-scoping. Called with the caller's resolved role + userId. */
-export async function fetchMyClasses(role: string, userId: string): Promise<ClassOption[]> {
-  const supabase = createBrowserSupabase();
+// `supabase` is injected by the caller — pass createServerSupabase(cookies)
+// from an .astro page or API route. Do NOT default this to a
+// browser/anon client: that was the bug that made every dropdown
+// depending on this function come back empty under RLS.
+export async function fetchMyClasses(supabase: SupabaseClient, role: string, userId: string): Promise<ClassOption[]> {
 
   if (role === 'teacher') {
     const [{ data: tc }, { data: ts }] = await Promise.all([
@@ -128,8 +131,7 @@ export async function fetchMyClasses(role: string, userId: string): Promise<Clas
 }
 
 /** Mirrors the subject list + Fix 3's subject_teacher filter by teacher_subjects. */
-export async function fetchSubjectsFor(role: string, userId: string): Promise<SubjectOption[]> {
-  const supabase = createBrowserSupabase();
+export async function fetchSubjectsFor(supabase: SupabaseClient, role: string, userId: string): Promise<SubjectOption[]> {
   const { data: allSubjects } = await supabase.from('subjects').select('id, name').order('name');
   let subjects = allSubjects ?? [];
 
@@ -150,12 +152,12 @@ export async function fetchSubjectsFor(role: string, userId: string): Promise<Su
  * Returns null when allowed, or an error message when not.
  */
 export async function checkSheetAccess(
+  supabase: SupabaseClient,
   role: string,
   userId: string,
   classId: string,
   subjectId: string
 ): Promise<string | null> {
-  const supabase = createBrowserSupabase();
 
   if (role === 'teacher') {
     const { data: classAssign } = await supabase
@@ -196,12 +198,12 @@ export async function checkSheetAccess(
 
 /** Mirrors the students+existing-results fetch inside loadSheet(). */
 export async function fetchSheetData(
+  supabase: SupabaseClient,
   classId: string,
   subjectId: string,
   term: string,
   session: string
 ): Promise<{ students: StudentRow[]; existing: Record<string, ExistingResult> }> {
-  const supabase = createBrowserSupabase();
   const [{ data: students }, { data: existing }] = await Promise.all([
     supabase.from('students').select('id, full_name, admission_number').eq('class_id', classId).order('full_name'),
     supabase.from('results').select('*').eq('class_id', classId).eq('subject_id', subjectId).eq('term', term).eq('session', session),
@@ -220,6 +222,7 @@ export async function fetchSheetData(
  * matched here so behavior on partial failure is identical.
  */
 export async function saveSheet(
+  supabase: SupabaseClient,
   rows: SheetRow[],
   classId: string,
   className: string,
@@ -228,7 +231,6 @@ export async function saveSheet(
   term: string,
   session: string
 ): Promise<{ ok: boolean; saved: number; error?: string }> {
-  const supabase = createBrowserSupabase();
 
   const ups = rows
     .map((row) => {
@@ -335,11 +337,11 @@ export async function saveSheet(
  * null (not ranked) — same as the old app.
  */
 export async function calcPositions(
+  supabase: SupabaseClient,
   classId: string,
   term: string,
   session: string
 ): Promise<{ ok: boolean; count: number; error?: string }> {
-  const supabase = createBrowserSupabase();
   const { data } = await supabase.from('results').select('student_id, total').eq('class_id', classId).eq('term', term).eq('session', session);
 
   if (!data?.length) return { ok: false, count: 0, error: 'No results to rank.' };
@@ -382,11 +384,11 @@ export interface BlockRow {
 }
 
 export async function fetchBlockList(
+  supabase: SupabaseClient,
   classId: string,
   term: string,
   session: string
 ): Promise<{ students: StudentRow[]; blocks: Record<string, { blocked: boolean; message: string }> }> {
-  const supabase = createBrowserSupabase();
   const { data: students } = await supabase.from('students').select('id, full_name, admission_number').eq('class_id', classId).order('full_name');
   const ids = (students ?? []).map((s) => s.id);
   const { data: existing } = await supabase
@@ -406,13 +408,13 @@ export async function fetchBlockList(
 
 /** Mirrors applyResultBlocks() — upsert on (student_id, term, session). */
 export async function applyResultBlocks(
+  supabase: SupabaseClient,
   records: BlockRow[],
   term: string,
   session: string,
   blockedBy: string
 ): Promise<{ ok: boolean; count: number; error?: string }> {
   if (!records.length) return { ok: false, count: 0, error: 'No students found.' };
-  const supabase = createBrowserSupabase();
   const payload = records.map((r) => ({
     student_id: r.student_id,
     term,

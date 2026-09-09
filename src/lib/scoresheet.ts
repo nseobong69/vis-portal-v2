@@ -1,4 +1,4 @@
-import { createBrowserSupabase } from './supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { grade, type GradeBand } from './results';
 
 // Ported from the old app's renderScoreSheet()/loadScoreSheetPreview()
@@ -20,8 +20,7 @@ export interface SubjectOption {
 }
 
 /** Mirrors renderScoreSheet()'s subject list: subject_teacher sees only assigned subjects. */
-export async function fetchScoreSheetSubjects(role: string, userId: string): Promise<SubjectOption[]> {
-  const supabase = createBrowserSupabase();
+export async function fetchScoreSheetSubjects(supabase: SupabaseClient, role: string, userId: string): Promise<SubjectOption[]> {
   if (role === 'subject_teacher') {
     const { data } = await supabase.from('teacher_subjects').select('subject_id, subjects(id, name)').eq('teacher_id', userId);
     return (data ?? []).map((r: any) => r.subjects).filter(Boolean);
@@ -42,12 +41,12 @@ export interface ScoreSheetRow {
 
 /** Mirrors loadScoreSheetPreview()'s scoreMap join + row shaping. */
 export async function fetchScoreSheetPreview(
+  supabase: SupabaseClient,
   classId: string,
   subjectName: string,
   term: string,
   session: string
 ): Promise<ScoreSheetRow[]> {
-  const supabase = createBrowserSupabase();
   const [{ data: scores }, { data: students }] = await Promise.all([
     supabase.from('results').select('*').eq('class_id', classId).eq('subject_name', subjectName).eq('term', term).eq('session', session).order('student_name'),
     supabase.from('students').select('id, full_name, admission_number').eq('class_id', classId).order('full_name'),
@@ -93,8 +92,7 @@ export interface MarkSheetData {
 }
 
 /** Mirrors loadMarkSheetPreview(): builds the subject set, per-student totals/avg, and tie-aware position ranking. */
-export async function fetchMarkSheetData(classId: string, term: string, session: string): Promise<MarkSheetData> {
-  const supabase = createBrowserSupabase();
+export async function fetchMarkSheetData(supabase: SupabaseClient, classId: string, term: string, session: string): Promise<MarkSheetData> {
   const [{ data: students }, { data: results }] = await Promise.all([
     supabase.from('students').select('id, full_name, admission_number').eq('class_id', classId).order('full_name'),
     supabase.from('results').select('*').eq('class_id', classId).eq('term', term).eq('session', session),
@@ -149,8 +147,7 @@ export function ordinal(n: number): string {
 }
 
 /** Looks up the signed-in staff member's display name for PDF headers/footers (mirrors UP?.full_name). */
-export async function fetchStaffName(userId: string): Promise<string> {
-  const supabase = createBrowserSupabase();
+export async function fetchStaffName(supabase: SupabaseClient, userId: string): Promise<string> {
   const { data } = await supabase.from('profiles').select('full_name').eq('id', userId).maybeSingle();
   return data?.full_name ?? '—';
 }
