@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import StudentFormModal from './StudentFormModal';
+import TransferStudentsModal from './TransferStudentsModal';
+import StudentMigrationModal from './StudentMigrationModal';
 import Button from '../ui/Button';
 
 interface ClassOption { id: string; label: string }
@@ -31,13 +33,17 @@ interface Props {
   classes: ClassOption[];
   canAdd: boolean;
   canDelete: boolean;
+  canTransfer: boolean;
+  canMigrate: boolean;
   initialClassFilter?: string;
 }
 
-export default function StudentsManager({ students, classes, canAdd, canDelete, initialClassFilter }: Props) {
+export default function StudentsManager({ students, classes, canAdd, canDelete, canTransfer, canMigrate, initialClassFilter }: Props) {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState(initialClassFilter || '');
   const [modalStudent, setModalStudent] = useState<StudentRow | null | undefined>(undefined); // undefined = closed
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [migrateOpen, setMigrateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     return students.filter((s) => {
@@ -89,11 +95,23 @@ export default function StudentsManager({ students, classes, canAdd, canDelete, 
           {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
         <span className="text-xs text-brand-brown-light">{filtered.length} students</span>
-        {canAdd && (
-          <Button type="button" variant="gold" className="ml-auto" onClick={() => setModalStudent(null)}>
-            + Add Student
-          </Button>
-        )}
+        <div className="ml-auto flex gap-2">
+          {canMigrate && (
+            <Button type="button" variant="secondary" style={{ background: '#7C3AED', color: '#fff', borderColor: '#7C3AED' }} onClick={() => setMigrateOpen(true)}>
+              🪄 Auth Migration
+            </Button>
+          )}
+          {canTransfer && (
+            <Button type="button" variant="secondary" onClick={() => setTransferOpen(true)}>
+              ⇄ Transfer Students
+            </Button>
+          )}
+          {canAdd && (
+            <Button type="button" variant="gold" onClick={() => setModalStudent(null)}>
+              + Add Student
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -159,6 +177,22 @@ export default function StudentsManager({ students, classes, canAdd, canDelete, 
           student={modalStudent}
           onClose={() => setModalStudent(undefined)}
           onSaved={() => window.location.reload()}
+        />
+      )}
+
+      {transferOpen && (
+        <TransferStudentsModal
+          classes={classes}
+          students={students}
+          onClose={() => setTransferOpen(false)}
+          onDone={() => window.location.reload()}
+        />
+      )}
+
+      {migrateOpen && (
+        <StudentMigrationModal
+          onClose={() => setMigrateOpen(false)}
+          onDone={() => window.location.reload()}
         />
       )}
     </div>
