@@ -1,0 +1,27 @@
+---
+// Ported from renderCombinedPDFPage() (index.html L10285, Feature Checklist
+// row 14: "Combined PDF"). Same auth/layout pattern as results.astro —
+// role check here, data + rasterisation happen in the island via
+// /api/staff/combined-pdf/action.ts (server data) and src/lib/clientPdf.ts
+// (browser-side html2canvas + jsPDF).
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import CombinedPdfIsland from '../../components/staff/CombinedPdfIsland';
+
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher',
+]);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+---
+<AdminLayout title="Combined PDF" activePath="/admin/combined-pdf" role={auth.role}>
+  <div class="mb-6">
+    <h1 class="font-heading font-extrabold text-2xl text-brand-brown-dark">Combined Class Report</h1>
+    <p class="text-sm text-brand-brown-light mt-1">Generate an all-in-one PDF of every student's result card for your class.</p>
+  </div>
+  <CombinedPdfIsland client:load role={auth.role} userId={auth.userId} />
+</AdminLayout>
