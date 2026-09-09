@@ -1,14 +1,14 @@
 ---
 // Admin Portal — Staff & Teachers
-// Filtered to staff-tier roles client-side once real auth/session shape is confirmed (see README item 3) — this pass selects the raw profiles table.
+// Replaces the earlier unverified stub. Ported from renderStaff()/
+// stfRow()/addStaff()/editStaff()/removeStaff() (index.html ~8529-8730).
+// Staff live in `profiles`, not a separate `staff` table.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import StaffManager from '../../components/admin/StaffManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
 const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -16,35 +16,22 @@ if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
 
-// Filtered to staff-tier roles now that the checklist calls this out
-// specifically — 'profiles.role' is still the same unverified column
-// assumption auth.ts already carries (see main README item 3), so this
-// filter is only as trustworthy as that assumption is.
-const STAFF_ROLES = ['teacher', 'head_teacher', 'principal', 'admin', 'proprietor', 'super_admin'];
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('profiles')
-  .select('*')
-  .in('role', STAFF_ROLES)
-  .limit(50);
-
-const columns = [
-  { key: 'full_name', header: 'Name' },
-  { key: 'role', header: 'Role' }
-];
+const { data: staff, error } = await supabase.from('profiles').select('*').order('full_name');
 ---
 <AdminLayout title="Staff & Teachers" activePath="/admin/staff" role={auth.role}>
-  <Card title="Staff & Teachers">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Staff & Teachers</h1>
+      <p class="text-sm text-brand-brown-light">Manage all staff members</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `profiles` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load staff: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+
+    <StaffManager client:load staff={(staff ?? []) as any} canDelete={auth.role === 'super_admin'} />
+  </div>
 </AdminLayout>
