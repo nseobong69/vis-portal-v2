@@ -1,15 +1,17 @@
 ---
-// Replaces the raw-UUID stub. renderResults() in the old app
-// (index.html line 9348) is the SAME feature for admin, teacher, and
-// subject_teacher alike — Class/Subject/Term/Session → score sheet with
-// CA/Exam/Total/Grade. That's already built correctly as
-// ScoreSheet.tsx/ScoreSheetIsland.tsx for the staff routes, and its
-// auth check already permits super_admin/admin. So this page just
-// mounts that same component under AdminLayout instead of duplicating
-// the logic — no new score-entry code, just correct reuse.
+// CORRECTED from the previous version of this file, which wired this
+// route to ScoreSheetIsland — a read-only PDF-export tool with no
+// input fields and no Save button. The actual "Results Entry" screen
+// (renderResults()/loadSheet()/saveSheet()/calcPos() in the old app,
+// index.html line 9348) is ResultsSheet.tsx: class/subject/term/session
+// select, an editable CA/Exam grid, Save, Calc Positions, Block Results.
+// That component's data layer was also broken (browser-side anon
+// Supabase client returning empty under RLS) — fixed in
+// src/lib/results.ts + src/pages/api/staff/results/action.ts, both
+// part of this same push.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { checkAuth } from '../../lib/auth';
-import ScoreSheetIsland from '../../components/staff/ScoreSheetIsland';
+import ResultsSheetIsland from '../../components/staff/ResultsSheetIsland';
 
 const auth = await checkAuth(Astro.cookies, [
   'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
@@ -20,15 +22,11 @@ if (auth.status === 'unauthenticated') {
 if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
-
-// Same TODO the staff score-sheet.astro already carries — school_name
-// isn't wired to a real settings table yet in this component.
-const schoolName = 'Victorious International Schools';
 ---
 <AdminLayout title="Results" activePath="/admin/results" role={auth.role}>
   <div class="mb-6">
     <h1 class="font-heading font-extrabold text-2xl text-brand-brown-dark">Results Entry</h1>
-    <p class="text-sm text-brand-brown-light mt-1">Enter and review student scores by class, subject, term and session.</p>
+    <p class="text-sm text-brand-brown-light mt-1">Enter and publish student results by class, subject, term and session.</p>
   </div>
-  <ScoreSheetIsland client:load role={auth.role} userId={auth.userId} schoolName={schoolName} />
+  <ResultsSheetIsland client:load role={auth.role} userId={auth.userId} />
 </AdminLayout>
