@@ -1,14 +1,18 @@
 ---
 // Admin Portal — Students / Pupils
-// Register Student (the create form) is intentionally a separate route — this page proves the list/auth pattern only, per Section 3's row-by-row verification convention.
+// Replaces the earlier unverified stub (25-row query, no role filtering,
+// no add/edit/block/delete). Ported field-by-field from the old app's
+// renderStudents()/stuRow()/addStudent()/saveStudent()/toggleBlock()/
+// deleteStudent() (index.html ~7908-8410).
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import StudentsManager from '../../components/admin/StudentsManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher', 'subject_teacher',
+]);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,29 +21,61 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('students')
-  .select('*')
-  .limit(25);
+const [{ data: allStudents, error }, { data: classes }] = await Promise.all([
+  supabase.from('students').select('*').order('full_name'),
+  supabase.from('classes').select('id, name, arm, level').order('name'),
+]);
 
-const columns = [
-  { key: 'full_name', header: 'Name' },
-  { key: 'class_id', header: 'Class' },
-  { key: 'admission_no', header: 'Admission No' }
-];
+let students = allStudents || [];
+let visibleClasses = classes || [];
+
+// Same role-based visibility split as renderStudents() (index.html ~7920-7935).
+if (auth.role === 'head_teacher') {
+  const knpIds = new Set((classes || []).filter((c) => ['kindergarten', 'nursery', 'primary'].includes((c.level || '').toLowerCase())).map((c) => c.id));
+  students = students.filter((s) => knpIds.has(s.class_id));
+  visibleClasses = (classes || []).filter((c) => knpIds.has(c.id));
+} else if (auth.role === 'principal') {
+  const secIds = new Set((classes || []).filter((c) => (c.level || '').toLowerCase() === 'secondary').map((c) => c.id));
+  students = students.filter((s) => secIds.has(s.class_id));
+  visibleClasses = (classes || []).filter((c) => secIds.has(c.id));
+} else if (auth.role === 'teacher') {
+  const { data: tc } = await supabase.from('teacher_classes').select('class_id').eq('teacher_id', auth.userId);
+  const tcIds = new Set((tc || []).map((r) => r.class_id));
+  students = students.filter((s) => tcIds.has(s.class_id));
+  visibleClasses = (classes || []).filter((c) => tcIds.has(c.id));
+} else if (auth.role === 'subject_teacher') {
+  const { data: ts } = await supabase.from('teacher_subjects').select('subject_id, class_id').eq('teacher_id', auth.userId);
+  const tsClassIds = new Set((ts || []).map((r) => r.class_id).filter(Boolean));
+  students = students.filter((s) => tsClassIds.has(s.class_id));
+  visibleClasses = (classes || []).filter((c) => tsClassIds.has(c.id));
+}
+
+const classOptions = visibleClasses.map((c) => ({ id: c.id, label: `${c.name}${c.arm ? ' ' + c.arm : ''}` }));
+
+// Same canAdd/canDel gate as the old app (index.html ~7909-7911).
+const canAdd = ['super_admin', 'admin', 'head_teacher', 'principal', 'proprietor', 'teacher'].includes(auth.role);
+const canDelete = auth.role === 'super_admin';
 ---
 <AdminLayout title="Students / Pupils" activePath="/admin/students" role={auth.role}>
-  <Card title="Students / Pupils">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Students / Pupils</h1>
+      <p class="text-sm text-brand-brown-light">Manage enrolled students and pupils</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `students` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load students: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+
+    <StudentsManager
+      client:load
+      students={students as any}
+      classes={classOptions}
+      canAdd={canAdd}
+      canDelete={canDelete}
+      initialClassFilter={Astro.url.searchParams.get('class') || ''}
     />
-  </Card>
+  </div>
 </AdminLayout>
