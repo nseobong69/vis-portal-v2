@@ -30,3 +30,20 @@ export function createServerSupabase(cookies: AstroCookies): SupabaseClient {
 export function createBrowserSupabase(): SupabaseClient {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
+
+/**
+ * Service-role Supabase client — SERVER-SIDE ONLY, never import this from
+ * a component or anything that ships to the browser. Equivalent to what
+ * the old app's _callAuthAdmin() edge function does (index.html's Auth
+ * Migration tools): create/update Supabase Auth users. The secret lives
+ * only in this process's env, same trust boundary as an edge function.
+ */
+export function createAdminSupabase(): SupabaseClient {
+  const serviceKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set — Auth Migration and similar admin actions need it.');
+  }
+  return createClient(SUPABASE_URL, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
