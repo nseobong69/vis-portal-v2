@@ -1,14 +1,19 @@
 ---
-// Admin Portal — Results Entry
-// Entry form, Combined PDF, and report cards not ported. Score Sheet and Mark Sheet already exist as real staff-side screens from the ScoreSheet/MarkSheet phase — this row is the admin-tier oversight list only.
+// Replaces the raw-UUID stub. renderResults() in the old app
+// (index.html line 9348) is the SAME feature for admin, teacher, and
+// subject_teacher alike — Class/Subject/Term/Session → score sheet with
+// CA/Exam/Total/Grade. That's already built correctly as
+// ScoreSheet.tsx/ScoreSheetIsland.tsx for the staff routes, and its
+// auth check already permits super_admin/admin. So this page just
+// mounts that same component under AdminLayout instead of duplicating
+// the logic — no new score-entry code, just correct reuse.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
 import { checkAuth } from '../../lib/auth';
-import { createServerSupabase } from '../../lib/supabase';
+import ScoreSheetIsland from '../../components/staff/ScoreSheetIsland';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+]);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -16,30 +21,14 @@ if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
 
-const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('results')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'student_id', header: 'Student' },
-  { key: 'subject_id', header: 'Subject' },
-  { key: 'score', header: 'Score' }
-];
+// Same TODO the staff score-sheet.astro already carries — school_name
+// isn't wired to a real settings table yet in this component.
+const schoolName = 'Victorious International Schools';
 ---
-<AdminLayout title="Results Entry" activePath="/admin/results" role={auth.role}>
-  <Card title="Results Entry">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `results` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+<AdminLayout title="Results" activePath="/admin/results" role={auth.role}>
+  <div class="mb-6">
+    <h1 class="font-heading font-extrabold text-2xl text-brand-brown-dark">Results Entry</h1>
+    <p class="text-sm text-brand-brown-light mt-1">Enter and review student scores by class, subject, term and session.</p>
+  </div>
+  <ScoreSheetIsland client:load role={auth.role} userId={auth.userId} schoolName={schoolName} />
 </AdminLayout>
