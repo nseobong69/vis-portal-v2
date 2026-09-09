@@ -50,11 +50,14 @@ if (auth.role === 'head_teacher') {
   visibleClasses = (classes || []).filter((c) => tsClassIds.has(c.id));
 }
 
-const classOptions = visibleClasses.map((c) => ({ id: c.id, label: `${c.name}${c.arm ? ' ' + c.arm : ''}` }));
+const classOptions = visibleClasses.map((c) => ({ id: c.id, label: `${c.name}${c.arm ? ' ' + c.arm : ''}`, level: c.level }));
 
-// Same canAdd/canDel gate as the old app (index.html ~7909-7911).
+// Same canAdd/canDel/canTransfer/isSuperAdminSt gates as renderStudents()
+// (index.html ~7909-7911).
 const canAdd = ['super_admin', 'admin', 'head_teacher', 'principal', 'proprietor', 'teacher'].includes(auth.role);
 const canDelete = auth.role === 'super_admin';
+const canTransfer = ['super_admin', 'admin', 'head_teacher', 'principal', 'proprietor'].includes(auth.role);
+const canMigrate = ['super_admin', 'admin'].includes(auth.role);
 ---
 <AdminLayout title="Students / Pupils" activePath="/admin/students" role={auth.role}>
   <div class="flex flex-col gap-4">
@@ -75,6 +78,8 @@ const canDelete = auth.role === 'super_admin';
       classes={classOptions}
       canAdd={canAdd}
       canDelete={canDelete}
+      canTransfer={canTransfer}
+      canMigrate={canMigrate}
       initialClassFilter={Astro.url.searchParams.get('class') || ''}
     />
   </div>
