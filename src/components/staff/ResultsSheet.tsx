@@ -5,14 +5,6 @@ import Table from '../ui/Table';
 import Modal from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import {
-  fetchMyClasses,
-  fetchSubjectsFor,
-  checkSheetAccess,
-  fetchSheetData,
-  saveSheet,
-  calcPositions,
-  fetchBlockList,
-  applyResultBlocks,
   grade,
   isAbsentEntry,
   DEFAULT_BLOCK_MESSAGE,
@@ -21,6 +13,23 @@ import {
   type SheetRow,
   type BlockRow,
 } from '../../lib/results';
+
+// Every read/write below goes through this one server-authenticated
+// endpoint instead of calling Supabase directly from the browser. The
+// old code used createBrowserSupabase() here — an anonymous client
+// with no session — so under RLS every load came back empty and every
+// save/calc/block action silently failed with no visible error. See
+// src/pages/api/staff/results/action.ts.
+async function callResultsAPI(body: object) {
+  const res = await fetch('/api/staff/results/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed.');
+  return data;
+}
 
 const TERMS = ['1st Term', '2nd Term', '3rd Term'];
 const SESSIONS = ['2024/2025', '2025/2026'];
@@ -77,8 +86,12 @@ export default function ResultsSheet({ role, userId }: Props) {
   const [blockSaving, setBlockSaving] = useState(false);
 
   useEffect(() => {
-    fetchMyClasses(role, userId).then(setClasses);
-    fetchSubjectsFor(role, userId).then(setSubjects);
+    callResultsAPI({ action: 'init' })
+      .then((data) => {
+        setClasses(data.classes);
+        setSubjects(data.subjects);
+      })
+      .catch((e) => toastShow('danger', e.message));
   }, [role, userId]);
 
   const className = useMemo(() => {
@@ -97,16 +110,11 @@ export default function ResultsSheet({ role, userId }: Props) {
       toast('Select class and subject.', true);
       return;
     }
-    const accessErr = await checkSheetAccess(role, userId, classId, subjectId);
-    if (accessErr) {
-      toast(accessErr, true);
-      return;
-    }
     setLoading(true);
     setLoaded(false);
     try {
-      const { students, existing } = await fetchSheetData(classId, subjectId, term, session);
-      const initial: RowState[] = students.map((s) => {
+      const { students, existing } = await callResultsAPI({ action: 'load', classId, subjectId, term, session });
+      const initial: RowState[] = students.map((s: any) => {
         const ex = existing[s.id];
         const isAb = !!ex && (ex.is_absent || ex.grade === 'AB');
         const ca = isAb ? '-' : ex?.ca_score != null ? String(ex.ca_score) : '';
@@ -121,6 +129,8 @@ export default function ResultsSheet({ role, userId }: Props) {
       });
       setRows(initial);
       setLoaded(true);
+    } catch (e: any) {
+      toast(e.message, true);
     } finally {
       setLoading(false);
     }
@@ -139,12 +149,14 @@ export default function ResultsSheet({ role, userId }: Props) {
     }
     setSaving(true);
     try {
-      const res = await saveSheet(rows, classId, className, subjectId, subjectName, term, session);
+      const res = await callResultsAPI({ action: 'save', rows, classId, className, subjectId, subjectName, term, session });
       if (!res.ok) {
         toast('Some rows failed: ' + res.error, true);
         return;
       }
       toast(`✅ ${res.saved} results saved!`);
+    } catch (e: any) {
+      toast(e.message, true);
     } finally {
       setSaving(false);
     }
@@ -153,12 +165,14 @@ export default function ResultsSheet({ role, userId }: Props) {
   async function handleCalcPositions() {
     setCalcing(true);
     try {
-      const res = await calcPositions(classId, term, session);
+      const res = await callResultsAPI({ action: 'calcPositions', classId, term, session });
       if (!res.ok) {
         toast(res.error ?? 'Could not calculate positions.', true);
         return;
       }
       toast(`✅ Positions calculated for ${res.count} students!`);
+    } catch (e: any) {
+      toast(e.message, true);
     } finally {
       setCalcing(false);
     }
@@ -168,9 +182,9 @@ export default function ResultsSheet({ role, userId }: Props) {
     setBlockOpen(true);
     setBlockLoading(true);
     try {
-      const { students, blocks } = await fetchBlockList(classId, term, session);
+      const { students, blocks } = await callResultsAPI({ action: 'fetchBlockList', classId, term, session });
       setBlockRows(
-        students.map((s) => ({
+        students.map((s: any) => ({
           student_id: s.id,
           name: s.full_name,
           admNo: s.admission_number,
@@ -178,6 +192,8 @@ export default function ResultsSheet({ role, userId }: Props) {
           message: blocks[s.id]?.message ?? DEFAULT_BLOCK_MESSAGE,
         }))
       );
+    } catch (e: any) {
+      toast(e.message, true);
     } finally {
       setBlockLoading(false);
     }
@@ -186,13 +202,15 @@ export default function ResultsSheet({ role, userId }: Props) {
   async function handleApplyBlocks() {
     setBlockSaving(true);
     try {
-      const res = await applyResultBlocks(blockRows, term, session, userId);
+      const res = await callResultsAPI({ action: 'applyResultBlocks', records: blockRows, term, session });
       if (!res.ok) {
         toast(res.error ?? 'Could not apply block settings.', true);
         return;
       }
       toast(`✅ Block settings applied for ${res.count} students!`);
       setBlockOpen(false);
+    } catch (e: any) {
+      toast(e.message, true);
     } finally {
       setBlockSaving(false);
     }
