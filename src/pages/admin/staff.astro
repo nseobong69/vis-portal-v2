@@ -1,0 +1,37 @@
+---
+// Admin Portal — Staff & Teachers
+// Replaces the earlier unverified stub. Ported from renderStaff()/
+// stfRow()/addStaff()/editStaff()/removeStaff() (index.html ~8529-8730).
+// Staff live in `profiles`, not a separate `staff` table.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import StaffManager from '../../components/admin/StaffManager';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: staff, error } = await supabase.from('profiles').select('*').order('full_name');
+---
+<AdminLayout title="Staff & Teachers" activePath="/admin/staff" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Staff & Teachers</h1>
+      <p class="text-sm text-brand-brown-light">Manage all staff members</p>
+    </div>
+
+    {error && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load staff: {error.message}
+      </div>
+    )}
+
+    <StaffManager client:load staff={(staff ?? []) as any} canDelete={auth.role === 'super_admin'} />
+  </div>
+</AdminLayout>
