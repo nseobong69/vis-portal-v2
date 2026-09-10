@@ -1,1 +1,47 @@
+---
+// Ported from the question-bank builder half of the CBT feature
+// (index.html ~L11030-11440) — adding, editing and deleting cbt_questions
+// for one exam, with marks auto-redistributed to sum to 100% after every
+// change (unchanged from the old app's behaviour).
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import CbtQuestionsManager from '../../../components/admin/CbtQuestionsManager';
+import { checkAuth } from '../../../lib/auth';
+import { createServerSupabase } from '../../../lib/supabase';
 
+const CBT_ROLES = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher', 'subject_teacher'];
+const auth = await checkAuth(Astro.cookies, CBT_ROLES);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const { examId } = Astro.params;
+const supabase = createServerSupabase(Astro.cookies);
+const [{ data: exam, error }, { data: questions }] = await Promise.all([
+  supabase.from('cbt_exams').select('*').eq('id', examId).single(),
+  supabase.from('cbt_questions').select('*').eq('exam_id', examId).order('order_index'),
+]);
+
+if (!exam && !error) {
+  return Astro.redirect('/admin/cbt');
+}
+---
+<AdminLayout title="Exam Questions" activePath="/admin/cbt" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <a href="/admin/cbt" class="text-sm text-brand-brown-light hover:underline">&larr; Back to Exams</a>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark mt-1">{exam?.title || 'Exam'} — Questions</h1>
+      <p class="text-sm text-brand-brown-light">{exam?.class_name} · {exam?.subject_name}</p>
+    </div>
+
+    {error && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load this exam: {error.message}
+      </div>
+    )}
+
+    <CbtQuestionsManager examId={examId as string} questions={(questions ?? []) as any} client:load />
+  </div>
+</AdminLayout>
