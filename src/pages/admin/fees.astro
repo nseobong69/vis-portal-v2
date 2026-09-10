@@ -1,4 +1,9 @@
 ---
+// FIX: activePath was "/admin/fees" (correct for this file) but was
+// also wrongly copy-pasted onto finance-records.astro, causing the nav
+// highlight to point at the wrong tab whenever that page is viewed.
+// This file's own activePath was already correct — kept as-is.
+//
 // Replaces the earlier stub (a raw "Class ID" text input with no class
 // lookup — the row list showed blank/UUID-looking cells because nothing
 // ever resolved an id to a name). Ported from showFeeConfigModal()/
@@ -8,11 +13,7 @@
 // class owe" setup screen. The old app's Finance & Fees page also has Fee
 // Records (per-student payment ledger), Fee Summary, Expenditure, Bulk
 // Pay, and Paystack-backed invoicing (renderFinance(), index.html
-// ~L13565+) — those are materially separate features (different tables:
-// fee_payments, payment_attempts, expenditures; different edge functions)
-// and aren't ported here. This page is reachable at the existing
-// "Finance" nav link so it replaces today's broken screen with a working
-// one, not a complete Finance module.
+// ~L13565+) — those live at /admin/finance-records, a separate page.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import FeeConfigManager from '../../components/admin/FeeConfigManager';
 import { checkAuth } from '../../lib/auth';
@@ -38,14 +39,14 @@ const [{ data: configs, error }, { data: classes }] = await Promise.all([
 const classById = new Map((classes || []).map((c) => [c.id, `${c.name}${c.arm ? ' ' + c.arm : ''}`]));
 const configsWithNames = (configs || []).map((f) => ({
   ...f,
-  class_labels: Array.isArray(f.class_ids) && f.class_ids.length ? f.class_ids.map((id: string) => classById.get(id) || 'Unknown class') : ['All classes'],
+  class_labels: Array.isArray(f.class_ids) && f.class_ids.length ? f.class_ids.map((id: string) => classById.get(id) || id) : [],
 }));
 ---
 <AdminLayout title="Finance" activePath="/admin/fees" role={auth.role}>
   <div class="flex flex-col gap-4">
     <div>
       <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Fee Configuration</h1>
-      <p class="text-sm text-brand-brown-light">Set what each class owes per term. (Fee records, payments, and expenditure tracking are a separate, upcoming screen.)</p>
+      <p class="text-sm text-brand-brown-light">Set what each class owes per term. (Fee records, payments, and expenditure are on <a href="/admin/finance-records" class="underline text-brand-gold-dark">Finance Records</a>.)</p>
     </div>
 
     {error && (

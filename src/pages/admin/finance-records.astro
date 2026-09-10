@@ -1,4 +1,15 @@
 ---
+// FIX: activePath was wrongly "/admin/fees" (that's fees.astro's own
+// route, a completely different screen) — this page's real route is
+// /admin/finance-records, so it never highlighted correctly in the nav,
+// and finance-records.astro isn't in AdminLayout's nav array at all yet
+// (only one "Finance" link exists, pointing to /admin/fees). That's why
+// this screen was only reachable by typing the URL directly. Nav needs
+// a second link added in AdminLayout.astro — flagged separately since I
+// don't have that file's current content (it's been updated elsewhere
+// since I last saw it — the live nav already shows a "Combined PDF" tab
+// I never added).
+//
 // Completes Batch 2's Finance screen — that batch only shipped Fee
 // Configuration (what each class owes). This page adds the other three
 // tabs from renderFinance() (index.html ~L13565+): Fee Records (the
@@ -8,6 +19,11 @@
 // NOT ported: Paystack checkout/webhooks, bulk-pay-via-gateway, admission
 // fee invoicing. "Record Payment" below is the manual/cash path only —
 // see the header comment in api/admin/finance/mutate.ts for why.
+//
+// UPDATED: Create Invoice is now class-wide (checkboxes + Apply to All
+// Selected), matching the old app's real showFeeModal() flow, and
+// Record Payment is a proper modal instead of a prompt() dialog. See
+// FinanceRecordsManager.tsx and mutate.ts's new createInvoicesBulk action.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import FinanceRecordsManager from '../../components/admin/FinanceRecordsManager';
 import { checkAuth } from '../../lib/auth';
@@ -29,11 +45,11 @@ const [{ data: payments, error }, { data: classes }, { data: expenditures }] = a
   supabase.from('expenditures').select('*').order('date', { ascending: false }).limit(500),
 ]);
 ---
-<AdminLayout title="Finance Records" activePath="/admin/fees" role={auth.role}>
+<AdminLayout title="Finance Records" activePath="/admin/finance-records" role={auth.role}>
   <div class="flex flex-col gap-4">
     <div>
       <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Finance Records</h1>
-      <p class="text-sm text-brand-brown-light">Fee ledger, summary, and expenditure. Fee amounts are set on the <a href="/admin/fees" class="underline">Fee Configuration</a> screen.</p>
+      <p class="text-sm text-brand-brown-light">Fee ledger, summary, and expenditure. Fee amounts are set on the <a href="/admin/fees" class="underline text-brand-gold-dark">Fee Configuration</a> screen.</p>
     </div>
 
     {error && (
