@@ -7,11 +7,18 @@
 //
 // SCOPE: this is read-only oversight for admin-tier roles (matching the
 // "Attendance (Admin Oversight)" title already on the stub). The old
-// app's actual day-by-day marking workflow — a teacher opening a specific
-// week and ticking present/absent per student — is a separate, larger
-// piece (loadWeekView() and its per-student toggle UI, index.html
-// ~L12230+) and isn't ported here; that stays teacher-side for now, the
-// same as it works today.
+// app's actual day-by-day marking workflow — a teacher opening a
+// specific week and ticking present/absent per student — is a separate,
+// larger piece (loadWeekView() and its per-student toggle UI, index.html
+// ~L12230+).
+//
+// UPDATED: that marking workflow does NOT need rebuilding here — it's
+// already built as AttendanceMarker.tsx, and /staff/attendance already
+// permits every admin-tier role (super_admin/admin/proprietor/
+// head_teacher/principal), same as this page. Its autoLockClass prop is
+// only true for the literal 'teacher' role, so admin-tier visitors get
+// a full, unlocked class selector there today — this page was just
+// missing a link to it. Added below, no new marking UI built.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import AttendanceOversight from '../../components/admin/AttendanceOversight';
 import { checkAuth } from '../../lib/auth';
@@ -58,10 +65,21 @@ const rows = (weeks || [])
 ---
 <AdminLayout title="Attendance" activePath="/admin/attendance" role={auth.role}>
   <div class="flex flex-col gap-4">
-    <div>
-      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Attendance (Admin Oversight)</h1>
-      <p class="text-sm text-brand-brown-light">Read-only view of every class's weekly attendance progress. Day-by-day marking is done by the class teacher.</p>
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Attendance (Admin Oversight)</h1>
+        <p class="text-sm text-brand-brown-light">Read-only view of every class's weekly attendance progress.</p>
+      </div>
+      <a
+        href="/staff/attendance"
+        class="shrink-0 bg-brand-gold text-shell-obsidian shadow-gold hover:brightness-105 text-sm font-semibold px-4 py-2 rounded-sm"
+      >
+        ✏️ Mark Attendance
+      </a>
     </div>
+    <p class="text-xs text-brand-brown-light -mt-2">
+      Day-by-day marking is normally done by the class teacher, but any admin-tier role can mark or fix a class's attendance directly — the button above opens the same marking screen teachers use, with a full class selector unlocked.
+    </p>
 
     {error && (
       <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
@@ -69,6 +87,6 @@ const rows = (weeks || [])
       </div>
     )}
 
-    <AttendanceOversight rows={rows as any} classes={visibleClasses.map((c) => ({ id: c.id, name: `${c.name}${c.arm ? ' ' + c.arm : ''}` })) as any} />
+    <AttendanceOversight rows={rows as any} classes={visibleClasses.map((c) => ({ id: c.id, name: `${c.name}${c.arm ? ' ' + c.arm : ''}` }))} />
   </div>
 </AdminLayout>
