@@ -1,0 +1,52 @@
+---
+// Completes Batch 2's Finance screen — that batch only shipped Fee
+// Configuration (what each class owes). This page adds the other three
+// tabs from renderFinance() (index.html ~L13565+): Fee Records (the
+// per-student ledger), Fee Summary (paid/partial/unpaid breakdown), and
+// Expenditure (~L28950-29076).
+//
+// NOT ported: Paystack checkout/webhooks, bulk-pay-via-gateway, admission
+// fee invoicing. "Record Payment" below is the manual/cash path only —
+// see the header comment in api/admin/finance/mutate.ts for why.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import FinanceRecordsManager from '../../components/admin/FinanceRecordsManager';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const FINANCE_ROLES = ['super_admin', 'admin', 'proprietor', 'bursar'];
+const auth = await checkAuth(Astro.cookies, FINANCE_ROLES);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const [{ data: payments, error }, { data: classes }, { data: expenditures }] = await Promise.all([
+  supabase.from('fee_payments').select('*').order('created_at', { ascending: false }).limit(500),
+  supabase.from('classes').select('id, name, arm').order('name'),
+  supabase.from('expenditures').select('*').order('date', { ascending: false }).limit(500),
+]);
+---
+<AdminLayout title="Finance Records" activePath="/admin/fees" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Finance Records</h1>
+      <p class="text-sm text-brand-brown-light">Fee ledger, summary, and expenditure. Fee amounts are set on the <a href="/admin/fees" class="underline">Fee Configuration</a> screen.</p>
+    </div>
+
+    {error && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load fee records: {error.message}
+      </div>
+    )}
+
+    <FinanceRecordsManager
+      client:load
+      payments={(payments ?? []) as any}
+      classes={(classes ?? []) as any}
+      expenditures={(expenditures ?? []) as any}
+    />
+  </div>
+</AdminLayout>
