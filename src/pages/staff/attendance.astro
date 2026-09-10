@@ -1,1 +1,40 @@
+---
+// Teacher-facing counterpart to /admin/attendance (which is read-only
+// oversight). This is where the actual day-by-day marking happens —
+// ported from renderAttendance() (index.html ~L12094-12152).
+//
+// NOTE ON NAV: this route is separate from /admin/attendance on purpose
+// (oversight vs. marking are different permissions and different UIs in
+// the old app too). If teachers currently use the same "Attendance" nav
+// link as admins, point it here for the teacher role and keep it on
+// /admin/attendance for admin-tier roles — AdminLayout.astro's navItems
+// array doesn't currently branch by role for this link, only for
+// Finance/Settings, so that's a one-line addition when you wire it up.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AttendanceMarkingIsland from '../../components/staff/AttendanceMarkingIsland';
+import { checkAuth } from '../../lib/auth';
 
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'teacher', 'subject_teacher']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+// Mirrors renderAttendance()'s lock screen: subject_teacher is blocked
+// unless they also hold the plain teacher role. This app's checkAuth
+// returns a single role string, so a subject_teacher here is always
+// treated as "subject_teacher only" — if your schema tracks multiple
+// roles per user elsewhere, swap this for that real check.
+const isSubjectTeacherOnly = auth.role === 'subject_teacher';
+---
+<AdminLayout title="Mark Attendance" activePath="/staff/attendance" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Attendance</h1>
+      <p class="text-sm text-brand-brown-light">Mark your class's daily attendance, week by week.</p>
+    </div>
+    <AttendanceMarkingIsland client:load role={auth.role} isSubjectTeacherOnly={isSubjectTeacherOnly} />
+  </div>
+</AdminLayout>
