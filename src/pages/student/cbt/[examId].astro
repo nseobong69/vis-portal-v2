@@ -1,1 +1,25 @@
+---
+// Student-facing exam page. SCOPE NOTE: the old app rendered one question
+// at a time with a persistent per-question timer state, face verification
+// before start, and continuous tab-switch/violation monitoring
+// (index.html ~L11760+). This ports the core "answer questions, submit,
+// get graded" flow as a single-page form instead — same grading result,
+// simpler UI, no proctoring. If invigilated exam integrity matters for
+// your use case, that's the next layer to add on top of this.
+import StudentLayout from '../../../layouts/StudentLayout.astro';
+import ExamTaking from '../../../components/student/ExamTaking';
+import { checkAuth } from '../../../lib/auth';
 
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const { examId } = Astro.params;
+---
+<StudentLayout title="Exam" activePath="/student/cbt">
+  <ExamTaking examId={examId as string} client:load />
+</StudentLayout>
