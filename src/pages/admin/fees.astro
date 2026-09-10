@@ -1,0 +1,59 @@
+---
+// Replaces the earlier stub (a raw "Class ID" text input with no class
+// lookup — the row list showed blank/UUID-looking cells because nothing
+// ever resolved an id to a name). Ported from showFeeConfigModal()/
+// saveFeeConfig() (index.html ~L14911-14970, ~L15290-15330).
+//
+// SCOPE: this covers Fee Configuration only — the "how much does each
+// class owe" setup screen. The old app's Finance & Fees page also has Fee
+// Records (per-student payment ledger), Fee Summary, Expenditure, Bulk
+// Pay, and Paystack-backed invoicing (renderFinance(), index.html
+// ~L13565+) — those are materially separate features (different tables:
+// fee_payments, payment_attempts, expenditures; different edge functions)
+// and aren't ported here. This page is reachable at the existing
+// "Finance" nav link so it replaces today's broken screen with a working
+// one, not a complete Finance module.
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import FeeConfigManager from '../../components/admin/FeeConfigManager';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const FINANCE_ROLES = ['super_admin', 'admin', 'proprietor', 'bursar'];
+const auth = await checkAuth(Astro.cookies, FINANCE_ROLES);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const [{ data: configs, error }, { data: classes }] = await Promise.all([
+  supabase.from('fee_configs').select('*').order('created_at', { ascending: false }),
+  supabase.from('classes').select('id, name, arm').order('name'),
+]);
+
+// Resolve class_ids[] -> display names here, server-side, once — same fix
+// as ClassesManager/SubjectsManager already apply elsewhere in this app.
+const classById = new Map((classes || []).map((c) => [c.id, `${c.name}${c.arm ? ' ' + c.arm : ''}`]));
+const configsWithNames = (configs || []).map((f) => ({
+  ...f,
+  class_labels: Array.isArray(f.class_ids) && f.class_ids.length ? f.class_ids.map((id: string) => classById.get(id) || 'Unknown class') : ['All classes'],
+}));
+---
+<AdminLayout title="Finance" activePath="/admin/fees" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Fee Configuration</h1>
+      <p class="text-sm text-brand-brown-light">Set what each class owes per term. (Fee records, payments, and expenditure tracking are a separate, upcoming screen.)</p>
+    </div>
+
+    {error && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load fee configuration: {error.message}
+      </div>
+    )}
+
+    <FeeConfigManager client:load configs={configsWithNames as any} classes={(classes ?? []) as any} />
+  </div>
+</AdminLayout>
