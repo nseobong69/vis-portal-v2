@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
+import Modal from '../ui/Modal';
 
 interface Payment {
   id: string;
@@ -17,7 +18,7 @@ interface Payment {
 }
 interface ClassOption { id: string; name: string; arm: string | null }
 interface Expenditure { id: string; reason: string; date: string; amount: number; recorded_by: string | null }
-interface StudentOption { id: string; full_name: string; admission_number: string; class_name: string }
+interface StudentOption { id: string; full_name: string; admission_number: string; class_name: string; student_type?: string | null }
 
 interface Props {
   payments: Payment[];
@@ -43,80 +44,227 @@ async function callAPI(payload: object) {
   return data;
 }
 
-function InvoiceForm({ classes, onSaved }: { classes: ClassOption[]; onSaved: (p: Payment) => void }) {
+/**
+ * Ports showFeeModal()'s real flow (index.html ~13098): pick a class,
+ * every student in it loads with a checkbox, an "Apply to All Selected"
+ * bar sets fee type + New-student / Old-student amounts + payment mode
+ * in one shot, then a single Save creates one invoice per checked
+ * student. Replaces the old single-student-only dropdown form.
+ */
+function InvoiceForm({ classes, onSaved }: { classes: ClassOption[]; onSaved: (invoices: Payment[]) => void }) {
   const [classId, setClassId] = useState('');
   const [students, setStudents] = useState<StudentOption[]>([]);
-  const [studentId, setStudentId] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [perStudentAmount, setPerStudentAmount] = useState<Record<string, string>>({});
   const [feeType, setFeeType] = useState('School Fee');
-  const [amount, setAmount] = useState('');
-  const [amountPaid, setAmountPaid] = useState('');
+  const [amountNew, setAmountNew] = useState('');
+  const [amountOld, setAmountOld] = useState('');
+  const [paymentMode, setPaymentMode] = useState<'invoice' | 'full' | 'part'>('invoice');
+  const [partAmount, setPartAmount] = useState('');
   const [term, setTerm] = useState(TERMS[0]);
   const [session, setSession] = useState('2025/2026');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(false);
 
   async function loadStudents(id: string) {
     setClassId(id);
-    setStudentId('');
+    setSelected(new Set());
+    setPerStudentAmount({});
     setStudents([]);
+    setError('');
     if (!id) return;
+    setLoadingStudents(true);
     try {
       const data = await callAPI({ action: 'studentsByClass', classId: id });
       setStudents(data.students || []);
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setLoadingStudents(false);
     }
   }
 
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected((prev) => (prev.size === students.length ? new Set() : new Set(students.map((s) => s.id))));
+  }
+
+  // "Apply to All Selected" — resolves New vs Old student amount per
+  // selected row, same distinction the old app makes via student_type.
+  function applyToSelected() {
+    const next: Record<string, string> = { ...perStudentAmount };
+    students.forEach((s) => {
+      if (!selected.has(s.id)) return;
+      const isNew = (s.student_type || '').toLowerCase() === 'new';
+      const amt = isNew ? amountNew : amountOld || amountNew;
+      if (amt) next[s.id] = amt;
+    });
+    setPerStudentAmount(next);
+  }
+
+  const selectedCount = selected.size;
+
   async function submit() {
-    const student = students.find((s) => s.id === studentId);
-    if (!student || !feeType.trim() || !amount) {
-      setError('Class, student, fee type and amount are all required.');
+    const targets = students
+      .filter((s) => selected.has(s.id))
+      .map((s) => ({
+        studentId: s.id,
+        studentName: s.full_name,
+        admissionNumber: s.admission_number,
+        className: s.class_name,
+        amount: Number(perStudentAmount[s.id]) || 0,
+        amountPaid:
+          paymentMode === 'full' ? Number(perStudentAmount[s.id]) || 0
+          : paymentMode === 'part' ? Number(partAmount) || 0
+          : 0,
+      }));
+    if (!targets.length) {
+      setError('Select at least one student.');
+      return;
+    }
+    if (!feeType.trim() || targets.some((t) => !t.amount)) {
+      setError('Fee type is required, and every selected student needs an amount (use "Apply to All Selected" or set it per row).');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      const data = await callAPI({
-        action: 'createInvoice',
-        studentId: student.id,
-        studentName: student.full_name,
-        admissionNumber: student.admission_number,
-        className: student.class_name,
-        feeType,
-        amount: Number(amount),
-        amountPaid: Number(amountPaid) || 0,
-        term,
-        session,
-      });
-      onSaved(data.invoice);
-      setStudentId('');
-      setAmount('');
-      setAmountPaid('');
+      const data = await callAPI({ action: 'createInvoicesBulk', targets, feeType, term, session });
+      onSaved(data.invoices || []);
+      setSelected(new Set());
+      setPerStudentAmount({});
     } catch (e: any) {
-      setError(e.message || 'Could not create invoice.');
+      setError(e.message || 'Could not create invoices.');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 flex flex-col gap-3">
+    <div className="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 flex flex-col gap-4">
       <div className="font-heading font-bold text-brand-brown-dark">Create Invoice</div>
+      <p className="text-xs text-brand-brown-light -mt-2">Select a class, choose students, set fee details, then save invoices for all selected at once.</p>
+
       <div className="grid grid-cols-3 gap-3">
         <Select id="inv-class" label="Class" placeholder="Select Class" options={classes.map((c) => ({ value: c.id, label: `${c.name}${c.arm ? ' ' + c.arm : ''}` }))} value={classId} onChange={(e) => loadStudents(e.target.value)} />
-        <Select id="inv-student" label="Student" placeholder={classId ? 'Select Student' : 'Pick a class first'} options={students.map((s) => ({ value: s.id, label: `${s.full_name} (${s.admission_number})` }))} value={studentId} onChange={(e) => setStudentId(e.target.value)} />
-        <Input id="inv-feetype" label="Fee Type" value={feeType} onChange={(e) => setFeeType(e.target.value)} placeholder="e.g. School Fee" />
-        <Input id="inv-amount" label="Amount (₦)" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <Input id="inv-paid" label="Amount Paid Now (₦, optional)" type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
         <Select id="inv-term" label="Term" options={TERMS.map((t) => ({ value: t, label: t }))} value={term} onChange={(e) => setTerm(e.target.value)} />
         <Input id="inv-session" label="Session" value={session} onChange={(e) => setSession(e.target.value)} />
       </div>
-      {error && <div className="text-sm text-danger-700">{error}</div>}
-      <Button variant="primary" onClick={submit} disabled={saving} className="self-start">
-        {saving ? 'Creating…' : 'Create Invoice'}
-      </Button>
+
+      {classId && (
+        <>
+          <div className="bg-brand-cream rounded-lg p-4 flex flex-col gap-3">
+            <div className="text-xs font-bold text-brand-brown-light uppercase tracking-wide">Apply to All Selected</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+              <Input id="inv-feetype" label="Fee Type" value={feeType} onChange={(e) => setFeeType(e.target.value)} placeholder="e.g. School Fee" />
+              <Input id="inv-new" label="New Student (₦)" type="number" value={amountNew} onChange={(e) => setAmountNew(e.target.value)} />
+              <Input id="inv-old" label="Old Student (₦)" type="number" value={amountOld} onChange={(e) => setAmountOld(e.target.value)} />
+              <Select id="inv-mode" label="Payment Mode" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value as any)} options={[
+                { value: 'invoice', label: 'Invoice Only' },
+                { value: 'full', label: 'Full Payment — Paid' },
+                { value: 'part', label: 'Part Payment' },
+              ]} />
+            </div>
+            {paymentMode === 'part' && (
+              <Input id="inv-partamt" label="Part Payment Amount (₦, applies to each selected student)" type="number" value={partAmount} onChange={(e) => setPartAmount(e.target.value)} />
+            )}
+            <Button variant="secondary" onClick={applyToSelected} className="self-start text-xs">Apply to {selectedCount || 'Selected'} Student{selectedCount === 1 ? '' : 's'}</Button>
+          </div>
+
+          <div className="border border-brand-cream-dark rounded-lg max-h-80 overflow-y-auto">
+            {loadingStudents ? (
+              <div className="text-center py-8 text-sm text-brand-brown-light">Loading students…</div>
+            ) : students.length === 0 ? (
+              <div className="text-center py-8 text-sm text-brand-brown-light">No students found in this class.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-brand-cream text-xs uppercase text-brand-brown-light sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left w-8"><input type="checkbox" checked={selectedCount === students.length} onChange={toggleAll} /></th>
+                    <th className="px-3 py-2 text-left">Student</th>
+                    <th className="px-3 py-2 text-left">Type</th>
+                    <th className="px-3 py-2 text-left">Amount (₦)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((s) => (
+                    <tr key={s.id} className="border-t border-brand-cream-dark">
+                      <td className="px-3 py-2"><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} /></td>
+                      <td className="px-3 py-2 font-medium text-brand-brown-dark">{s.full_name} <span className="text-brand-brown-light font-normal">({s.admission_number})</span></td>
+                      <td className="px-3 py-2 text-brand-brown-light">{s.student_type || '—'}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          className="w-28 rounded border border-brand-cream-dark px-2 py-1"
+                          value={perStudentAmount[s.id] || ''}
+                          onChange={(e) => setPerStudentAmount((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-brand-brown-light">{selectedCount} student{selectedCount === 1 ? '' : 's'} selected</div>
+            {error && <div className="text-sm text-danger-700">{error}</div>}
+            <Button variant="primary" onClick={submit} disabled={saving}>
+              {saving ? 'Creating…' : `Create ${selectedCount || ''} Invoice${selectedCount === 1 ? '' : 's'}`}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+/** Replaces the old prompt()-based flow with a real modal, matching the
+ * old app's own dedicated "Record Payment — {name}" screen. */
+function RecordPaymentModal({ payment, onClose, onSaved }: { payment: Payment; onClose: () => void; onSaved: (status: string, amountPaid: number) => void }) {
+  const [amountPaid, setAmountPaid] = useState(String(payment.amount_paid || ''));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const balance = Math.max(0, Number(payment.amount) - (Number(amountPaid) || 0));
+
+  async function submit() {
+    if (amountPaid === '' || Number(amountPaid) < 0) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const data = await callAPI({ action: 'recordPayment', id: payment.id, amountPaid: Number(amountPaid) });
+      onSaved(data.status, Number(amountPaid));
+    } catch (e: any) {
+      setError(e.message || 'Could not record payment.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Record Payment — ${payment.student_name}`}>
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="text-sm text-brand-brown-light">{payment.fee_type} · {payment.class_name} · Invoice total ₦{Number(payment.amount).toLocaleString()}</div>
+        <Input id="rp-amount" label="Amount Paid (₦)" type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
+        <div className="text-sm text-brand-brown-light">Balance remaining: <strong className="text-brand-brown-dark">₦{balance.toLocaleString()}</strong></div>
+        {error && <div className="text-sm text-danger-700">{error}</div>}
+        <div className="flex justify-end gap-2 mt-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Save Payment'}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -126,6 +274,7 @@ function RecordsTab({ payments, classes }: { payments: Payment[]; classes: Class
   const [session, setSession] = useState('');
   const [className, setClassName] = useState('');
   const [search, setSearch] = useState('');
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const filtered = list.filter(
     (p) =>
@@ -135,16 +284,7 @@ function RecordsTab({ payments, classes }: { payments: Payment[]; classes: Class
       (!search || (p.student_name || '').toLowerCase().includes(search.toLowerCase()))
   );
 
-  async function recordPayment(p: Payment) {
-    const input = prompt(`Amount paid for ${p.student_name} (${p.fee_type})?`, String(p.amount_paid || 0));
-    if (input == null) return;
-    try {
-      const data = await callAPI({ action: 'recordPayment', id: p.id, amountPaid: Number(input) });
-      setList((prev) => prev.map((x) => (x.id === p.id ? { ...x, amount_paid: Number(input), status: data.status } : x)));
-    } catch (e: any) {
-      alert(e.message || 'Could not record payment.');
-    }
-  }
+  const payingRecord = list.find((p) => p.id === payingId) || null;
 
   async function del(id: string) {
     if (!confirm('Delete this invoice?')) return;
@@ -158,7 +298,7 @@ function RecordsTab({ payments, classes }: { payments: Payment[]; classes: Class
 
   return (
     <div className="flex flex-col gap-4">
-      <InvoiceForm classes={classes} onSaved={(inv) => setList((prev) => [inv, ...prev])} />
+      <InvoiceForm classes={classes} onSaved={(invoices) => setList((prev) => [...invoices, ...prev])} />
       <div className="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-4 flex flex-wrap gap-3 items-end">
         <Select id="fr-term" label="Term" placeholder="All Terms" options={TERMS.map((t) => ({ value: t, label: t }))} value={term} onChange={(e) => setTerm(e.target.value)} />
         <Input id="fr-search" label="Student name" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" />
@@ -192,7 +332,7 @@ function RecordsTab({ payments, classes }: { payments: Payment[]; classes: Class
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[p.status] || ''}`}>{p.status}</span>
                 </td>
                 <td className="px-4 py-2.5 flex gap-3">
-                  <button onClick={() => recordPayment(p)} className="text-brand-brown hover:underline">Record Payment</button>
+                  <button onClick={() => setPayingId(p.id)} className="text-brand-brown hover:underline">Record Payment</button>
                   <button onClick={() => del(p.id)} className="text-danger-700 hover:underline">Delete</button>
                 </td>
               </tr>
@@ -200,6 +340,17 @@ function RecordsTab({ payments, classes }: { payments: Payment[]; classes: Class
           </tbody>
         </table>
       </div>
+
+      {payingRecord && (
+        <RecordPaymentModal
+          payment={payingRecord}
+          onClose={() => setPayingId(null)}
+          onSaved={(status, amountPaid) => {
+            setList((prev) => prev.map((x) => (x.id === payingRecord.id ? { ...x, amount_paid: amountPaid, status } : x)));
+            setPayingId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
