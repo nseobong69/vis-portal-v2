@@ -3,10 +3,10 @@
 // (index.html ~L11030-11440) — adding, editing and deleting cbt_questions
 // for one exam, with marks auto-redistributed to sum to 100% after every
 // change (unchanged from the old app's behaviour).
-import AdminLayout from '../../../layouts/AdminLayout.astro';
-import CbtQuestionsManager from '../../../components/admin/CbtQuestionsManager';
-import { checkAuth } from '../../../lib/auth';
-import { createServerSupabase } from '../../../lib/supabase';
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import CbtQuestionsManager from '../../../../components/admin/CbtQuestionsManager';
+import { checkAuth } from '../../../../lib/auth';
+import { createServerSupabase } from '../../../../lib/supabase';
 
 const CBT_ROLES = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher', 'subject_teacher'];
 const auth = await checkAuth(Astro.cookies, CBT_ROLES);
