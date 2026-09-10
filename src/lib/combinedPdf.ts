@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { calcTotals, genAffectiveTraits, teacherComment, principalComment, tieRank, isPupilClass, type ResultRow, type Trait, type ClassSigData } from './resultCard';
+import { calcTotals, genAffectiveTraits, teacherComment, principalComment, tieRank, isPupilClass, DEFAULT_PASS_MARK, type ResultRow, type Trait, type ClassSigData } from './resultCard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMBINED CLASS PDF — server-side data layer.
@@ -197,12 +197,13 @@ export async function fetchCombinedPdfData(
   // so this is a single lookup — kept as a map for parity/readability).
   const sigCache: Record<string, ClassSigData> = {};
 
+  const passMark = Number(schoolSettings.pass_mark) || DEFAULT_PASS_MARK;
   const payload: CombinedPdfStudentPayload[] = [];
   for (const s of students) {
     const results = (resultsMap[s.id] || []).slice().sort((a, b) => a.subject_name.localeCompare(b.subject_name));
     const atData = traitsMap[s.id];
     const qrPin = pinsMap[s.id] || '';
-    const { grand, totalObtainable, avg, pf, pfColor } = calcTotals(results);
+    const { grand, totalObtainable, avg, pf, pfColor } = calcTotals(results, passMark);
     const pos = tieRank(classResults, s.id) || null;
     const traits = atData?.traits || genAffectiveTraits(avg);
 
