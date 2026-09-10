@@ -1,14 +1,24 @@
 ---
-// Admin Portal — CBT Module (Admin)
-// Exam/question authoring, walk-in codes, and violation review not ported — the student-side CBT flow (FaceCheckGate, invigilator PIN, snapshots) is already real from the CBT phases; this is the admin oversight list only.
+// Replaces the earlier stub (a table that always showed "No records
+// found" because nothing ever queried cbt_exams). Ported from the exam
+// list + create-exam form in renderCBT() (index.html ~L10527-10600) and
+// the insert shape from its save handler (~L10967-10985).
+//
+// SCOPE: exam creation + listing only (title, class, subject, term,
+// duration, status). The old app's question bank builder, live exam-
+// taking flow, auto-grading, and violation/proctoring logs (cbt_questions,
+// cbt_exam_students, cbt_submissions, cbt_snapshots, cbt_violations,
+// index.html ~L11030-11553+) are a materially larger, separate feature
+// and aren't ported here — an exam created on this screen has no
+// questions yet until that follow-up lands.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import CbtExamsManager from '../../components/admin/CbtExamsManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher', 'subject_teacher',
+]);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,29 +27,30 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('cbt_exams')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'title', header: 'Exam' },
-  { key: 'class_id', header: 'Class' },
-  { key: 'status', header: 'Status' }
-];
+const [{ data: exams, error }, { data: classes }, { data: subjects }] = await Promise.all([
+  supabase.from('cbt_exams').select('*').order('created_at', { ascending: false }),
+  supabase.from('classes').select('id, name, arm').order('name'),
+  supabase.from('subjects').select('id, name').order('name'),
+]);
 ---
-<AdminLayout title="CBT Module (Admin)" activePath="/admin/cbt" role={auth.role}>
-  <Card title="CBT Module (Admin)">
+<AdminLayout title="CBT Exams" activePath="/admin/cbt" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">CBT Module (Admin)</h1>
+      <p class="text-sm text-brand-brown-light">Create exam shells here, then add questions once the question-bank screen is ready.</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `cbt_exams` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load exams: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+
+    <CbtExamsManager
+      client:load
+      exams={(exams ?? []) as any}
+      classes={(classes ?? []) as any}
+      subjects={(subjects ?? []) as any}
     />
-  </Card>
+  </div>
 </AdminLayout>

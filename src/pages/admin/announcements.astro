@@ -1,16 +1,17 @@
 ---
-// Admin Portal — Announcements
-// CRUD wired: add (AdminRecordForm) + delete, both through the
-// whitelisted /api/admin/records endpoint (Section: TABLE_FIELDS).
-// Edit-in-place is still not implemented — add + delete only.
+// Replaces the earlier stub (bare Title/Body/Add form with no audience
+// targeting, author, or role-based visibility). Ported from
+// renderAnnouncements()/showPostModal() (index.html ~L15763-15900), same
+// pattern as classes.astro: server-fetch + role-scope in frontmatter, hand
+// off to a client:load Manager component for the create/delete UI.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import AdminCrudList from '../../components/admin/AdminCrudList';
+import AnnouncementsManager from '../../components/admin/AnnouncementsManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher', 'subject_teacher', 'bursar',
+]);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -19,34 +20,45 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('announcements')
-  .select('*')
-  .limit(50);
+const [{ data: annData, error }, { data: classes }] = await Promise.all([
+  supabase.from('announcements').select('*').order('created_at', { ascending: false }),
+  supabase.from('classes').select('id, name, arm').order('name'),
+]);
 
-const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'created_at', header: 'Posted' }
-];
-const formFields = [
-  { key: 'title', label: 'Title', type: 'text' },
-  { key: 'body', label: 'Body', type: 'text' }
-];
+// Same role-scoped visibility as renderAnnouncements() — teachers only see
+// all-staff/all-audience notices plus their own posts; full admin tiers see
+// everything. (Student-side filtering doesn't apply to this admin route.)
+const ANN_FULL_CONTROL = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal'];
+const canSeeAll = ANN_FULL_CONTROL.includes(auth.role);
+let announcements = annData || [];
+if (!canSeeAll) {
+  announcements = announcements.filter(
+    (a) => a.audience === 'all' || a.audience === 'staff' || a.author_id === auth.userId
+  );
+}
+const canPost = [...ANN_FULL_CONTROL, 'teacher', 'subject_teacher'].includes(auth.role);
 ---
 <AdminLayout title="Announcements" activePath="/admin/announcements" role={auth.role}>
-  <Card title="Announcements">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Announcements</h1>
+      <p class="text-sm text-brand-brown-light">School notices and updates</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `announcements` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load announcements: {error.message}
+      </div>
     )}
-    <AdminCrudList
+
+    <AnnouncementsManager
       client:load
-      table="announcements"
-      columns={columns}
-      formFields={formFields}
-      initialRows={(rows ?? []) as any[]}
+      announcements={announcements as any}
+      classes={(classes ?? []) as any}
+      role={auth.role}
+      userId={auth.userId}
+      canPost={canPost}
+      canSeeAll={canSeeAll}
     />
-  </Card>
+  </div>
 </AdminLayout>
