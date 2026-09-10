@@ -114,23 +114,40 @@ function InvoiceForm({ classes, onSaved }: { classes: ClassOption[]; onSaved: (i
   async function submit() {
     const targets = students
       .filter((s) => selected.has(s.id))
-      .map((s) => ({
-        studentId: s.id,
-        studentName: s.full_name,
-        admissionNumber: s.admission_number,
-        className: s.class_name,
-        amount: Number(perStudentAmount[s.id]) || 0,
-        amountPaid:
-          paymentMode === 'full' ? Number(perStudentAmount[s.id]) || 0
-          : paymentMode === 'part' ? Number(partAmount) || 0
-          : 0,
-      }));
+      .map((s) => {
+        const isNew = (s.student_type || '').toLowerCase() === 'new';
+        // Resolve the same way "Apply to All Selected" would, even if
+        // that button was never explicitly clicked — a per-row value
+        // always wins if the user typed one in directly. Was:
+        // Number(perStudentAmount[s.id]) || 0, which silently fell back
+        // to the Apply-to-All bar's fields never being read at submit
+        // time at all — if Apply wasn't clicked, every row stayed
+        // blank no matter what New/Old Student said.
+        const raw = perStudentAmount[s.id] !== undefined && perStudentAmount[s.id] !== ''
+          ? perStudentAmount[s.id]
+          : (isNew ? amountNew : (amountOld || amountNew));
+        const amount = raw !== '' && raw != null ? Number(raw) : NaN;
+        return {
+          studentId: s.id,
+          studentName: s.full_name,
+          admissionNumber: s.admission_number,
+          className: s.class_name,
+          amount,
+          amountPaid:
+            paymentMode === 'full' ? amount
+            : paymentMode === 'part' ? Number(partAmount) || 0
+            : 0,
+        };
+      });
     if (!targets.length) {
       setError('Select at least one student.');
       return;
     }
-    if (!feeType.trim() || targets.some((t) => !t.amount)) {
-      setError('Fee type is required, and every selected student needs an amount (use "Apply to All Selected" or set it per row).');
+    // 0 is a legitimate amount (e.g. "New students pay ₦0 this term") —
+    // was previously rejected because `!t.amount` treats 0 as falsy.
+    // Only a genuinely unresolved (NaN) or negative amount is invalid.
+    if (!feeType.trim() || targets.some((t) => isNaN(t.amount) || t.amount < 0)) {
+      setError('Fee type is required, and every selected student needs an amount — 0 is allowed. Set New Student / Old Student above, or per row.');
       return;
     }
     setSaving(true);
