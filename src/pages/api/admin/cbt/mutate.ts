@@ -26,6 +26,8 @@ interface Body {
   term?: string;
   session?: string;
   status?: 'draft' | 'active' | 'completed';
+  scoreType?: 'none' | 'ca' | 'test' | 'exam';
+  maxScore?: number;
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -48,6 +50,16 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!title) return new Response(JSON.stringify({ error: 'Exam title is required.' }), { status: 400 });
     if (!body.classId) return new Response(JSON.stringify({ error: 'Select a class.' }), { status: 400 });
     if (!body.subjectId) return new Response(JSON.stringify({ error: 'Select a subject.' }), { status: 400 });
+    // score_type mirrors the old app's own "Score Type" field (index.html
+    // ~L10920: CBT Only / Save as CA Score (out of 30) / Save as Exam
+    // Score (out of 70)) — extended here with a third label, 'test',
+    // per request. 'ca' and 'test' both write into results.ca_score;
+    // 'exam' writes into results.exam_score (see api/student/cbt/action.ts's
+    // submit handler). max_score is the old app's fixed 30/70 made
+    // editable instead of hardcoded.
+    const scoreType = body.scoreType || 'none';
+    const defaultMax = scoreType === 'exam' ? 70 : 30;
+    const maxScore = body.maxScore && body.maxScore > 0 ? body.maxScore : defaultMax;
     const record = {
       title,
       class_id: body.classId,
@@ -58,7 +70,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       term: body.term || null,
       session: body.session || null,
       exam_type: 'regular',
-      score_type: 'none',
+      score_type: scoreType,
+      max_score: scoreType === 'none' ? null : maxScore,
       status: 'draft',
       access_code: secureCode8(),
       created_by: auth.userId,
@@ -70,6 +83,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (body.action === 'setStatus') {
     if (!body.id || !body.status) return new Response(JSON.stringify({ error: 'Missing exam id or status.' }), { status: 400 });
+    // Mirrors activateExamWithToast()'s guard (index.html ~L10586):
+    // "Add questions before activating the exam." — a student should
+    // never be able to land on a live exam with nothing to answer.
+    if (body.status === 'active') {
+      const { count } = await supabase.from('cbt_questions').select('id', { count: 'exact', head: true }).eq('exam_id', body.id);
+      if (!count) {
+        return new Response(JSON.stringify({ error: 'Add questions before activating this exam.' }), { status: 400 });
+      }
+    }
     const { error } = await supabase.from('cbt_exams').update({ status: body.status }).eq('id', body.id);
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
