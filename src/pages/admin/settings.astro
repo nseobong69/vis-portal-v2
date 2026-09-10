@@ -7,6 +7,14 @@
 // because they are not simple school_settings columns, are:
 //  - 'signatures_stamps' Classes tab -> separate `class_signatures` table
 //  - 'admissions_fees' per-class fee override -> separate per-class UI
+//
+// ADDED: Passing Mark (%) in the Academic Calendar card — was missing
+// entirely (school_settings.pass_mark). Old app placement: inside the
+// Academic Calendar card, right after "Next Term Begins Date"
+// (index.html ~line 16643-16647). Drives PASS_MARK()/passFail() across
+// every result/mark-sheet/combined-PDF screen — those all default to 40
+// when this is unset, so this field was never *broken*, just never
+// exposed to change it from the UI.
 import StaffLayout from '../../layouts/AdminLayout.astro';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
@@ -35,7 +43,7 @@ const { data: ss, error } = await supabase
   .select(`
     school_name, motto, address, phone1, phone2, email, logo_url, hero_image_url,
     hp_apart_cards,
-    current_session, current_term, term_end_date, next_term_date,
+    current_session, current_term, term_end_date, next_term_date, pass_mark,
     primary_color, secondary_color,
     admission_signatory_name, admission_signatory_role, admission_signatory_signature, admission_signatory_stamp,
     finance_signatory_name, finance_signatory_role, finance_signatory_signature, finance_signatory_stamp,
@@ -96,6 +104,9 @@ const calendar = {
   current_term: ss?.current_term || '1st Term',
   term_end_date: ss?.term_end_date || '',
   next_term_date: ss?.next_term_date || '',
+  // Same fallback as PASS_MARK() in the old app (index.html line 5348):
+  // isNaN(v) ? 40 : v.
+  pass_mark: ss?.pass_mark != null ? ss.pass_mark : 40,
 };
 
 const colours = {
@@ -321,6 +332,12 @@ const aboutValueDefaults = [
             <label for="cal-nextterm" class="text-sm font-medium text-brand-brown-dark">Next Term Begins Date</label>
             <input id="cal-nextterm" name="next_term_date" type="date" value={calendar.next_term_date}
               class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="cal-passmark" class="text-sm font-medium text-brand-brown-dark">Passing Mark (%)</label>
+            <input id="cal-passmark" name="pass_mark" type="number" min="0" max="100" step="1" value={calendar.pass_mark} placeholder="e.g. 40"
+              class="font-body text-sm rounded-sm border border-brand-cream-dark px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold" />
+            <p class="text-xs text-brand-brown-light mt-1">Students scoring at or above this mark are recorded as <strong>PASS</strong>; below it as <strong>FAIL</strong>, on student results, mark sheets, and the combined PDF.</p>
           </div>
         </div>
         <div class="flex items-center gap-3 pt-2">
@@ -940,10 +957,14 @@ const aboutValueDefaults = [
     calStatus.textContent = 'Saving…';
     calStatus.className = 'text-sm text-brand-brown-light';
     const fd = new FormData(calForm);
-    const calendar: Record<string, string> = {};
+    const calendar: Record<string, string | number> = {};
     ['current_session', 'current_term', 'term_end_date', 'next_term_date'].forEach((k) => {
       calendar[k] = (fd.get(k) as string) || '';
     });
+    // Pass Mark — clamp 0-100 the same way saveSchoolSettings() does
+    // (index.html line 17730), defaulting to 40 on anything invalid.
+    const rawPassMark = parseFloat((fd.get('pass_mark') as string) || '');
+    calendar.pass_mark = isNaN(rawPassMark) ? 40 : Math.max(0, Math.min(100, rawPassMark));
     try {
       const res = await fetch('/api/admin/settings/save', {
         method: 'POST',
