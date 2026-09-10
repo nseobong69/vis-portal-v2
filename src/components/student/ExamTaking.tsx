@@ -41,6 +41,7 @@ export default function ExamTaking({ examId }: { examId: string }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<{ score: number; total_marks: number; percentage: number } | null>(null);
+  const [resultsUpdated, setResultsUpdated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function fetchExam(code?: string) {
@@ -89,6 +90,7 @@ export default function ExamTaking({ examId }: { examId: string }) {
     try {
       const data = await call({ action: 'submit', examId, answers });
       setResult(data.submission);
+      setResultsUpdated(!!data.resultsUpdated);
       setPhase('submitted');
     } catch (e: any) {
       setError(e.message);
@@ -141,6 +143,9 @@ export default function ExamTaking({ examId }: { examId: string }) {
           <div className="text-4xl font-bold text-brand-brown-dark">{result.score}/{result.total_marks}</div>
           <div className="text-lg font-bold text-brand-brown mt-1">{pct.toFixed(1)}%</div>
         </div>
+        {resultsUpdated && (
+          <p className="text-xs text-success-700 mt-4">✓ This score has been saved to your results.</p>
+        )}
       </div>
     );
   }
