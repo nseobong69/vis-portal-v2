@@ -1,1 +1,89 @@
+---
+// Read-only attendance history for the logged-in student. Ported from the
+// data side of the old app's student/parent attendance views (index.html
+// ~L20981-21107) — server-rendered here since it's read-only, no client
+// component needed.
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
 
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: records, error } = await supabase
+  .from('attendance_records')
+  .select('*')
+  .eq('student_id', auth.userId)
+  .order('date', { ascending: false })
+  .limit(200);
+
+const rows = records || [];
+const total = rows.length;
+const fullyPresent = rows.filter((r) => r.morning_status === 'present' && r.afternoon_status === 'present').length;
+const pct = total ? Math.round((fullyPresent / total) * 100) : 0;
+---
+<StudentLayout title="My Attendance" activePath="/student/attendance">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">My Attendance</h1>
+      <p class="text-sm text-brand-brown-light">Read-only — marked by your class teacher.</p>
+    </div>
+
+    {error && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load attendance: {error.message}
+      </div>
+    )}
+
+    <div class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 flex gap-8">
+      <div>
+        <div class="text-sm text-brand-brown-light">Days Recorded</div>
+        <div class="text-2xl font-bold text-brand-brown-dark">{total}</div>
+      </div>
+      <div>
+        <div class="text-sm text-brand-brown-light">Attendance Rate</div>
+        <div class="text-2xl font-bold text-success-700">{pct}%</div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg border border-brand-cream-dark shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-brand-cream text-xs uppercase text-brand-brown-light">
+          <tr>
+            <th class="text-left px-4 py-2.5">Date</th>
+            <th class="text-left px-4 py-2.5">Day</th>
+            <th class="text-left px-4 py-2.5">Morning</th>
+            <th class="text-left px-4 py-2.5">Afternoon</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr><td colspan="4" class="text-center px-4 py-8 text-brand-brown-light">No attendance recorded yet.</td></tr>
+          )}
+          {rows.map((r) => (
+            <tr class="border-t border-brand-cream-dark">
+              <td class="px-4 py-2.5">{r.date}</td>
+              <td class="px-4 py-2.5">{r.day_of_week}</td>
+              <td class="px-4 py-2.5">
+                <span class={r.morning_status === 'present' ? 'text-success-700' : 'text-danger-700'}>
+                  {r.morning_status === 'present' ? '✓ Present' : '○ Absent'}
+                </span>
+              </td>
+              <td class="px-4 py-2.5">
+                <span class={r.afternoon_status === 'present' ? 'text-success-700' : 'text-danger-700'}>
+                  {r.afternoon_status === 'present' ? '✓ Present' : '○ Absent'}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</StudentLayout>
