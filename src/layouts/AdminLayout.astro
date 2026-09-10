@@ -6,12 +6,12 @@
 // auth check happens in each page's own frontmatter before this shell
 // is reached.
 //
-// NOTE: this nav is intentionally a short, high-traffic subset of the
-// ~34 admin screens listed in Phase 0's table, not the full set — add
-// items here as each screen gets its own real port (same incremental
-// approach Phase 3/3b/3c/3d used for Public/Parent/Student). `showSettings`
-// gates School Settings to super_admin only, matching Phase 0 finding
-// (only super_admin gets Settings; admin/proprietor do not).
+// NOTE: this nav is intentionally a subset of the ~34 admin screens
+// listed in Phase 0's table, not the full set — add items here as each
+// screen gets its own real port (same incremental approach Phase
+// 3/3b/3c/3d used for Public/Parent/Student). `showSettings` gates
+// School Settings to super_admin only, matching Phase 0 finding (only
+// super_admin gets Settings; admin/proprietor do not).
 //
 // CHANGED from the previous version: the "Attendance" link now branches
 // by role — teachers go to the day-by-day marking screen
@@ -19,6 +19,15 @@
 // screen (/admin/attendance). "Finance" now points at the fuller Finance
 // Records screen (/admin/finance-records: ledger/summary/expenditure);
 // Fee Configuration is still reachable from a link on that page.
+//
+// ADDED: Fee Receipts (per-student invoice/receipt PDFs — a separate
+// old-app screen from Finance Records, index.html's renderFeeReceipts()),
+// Scholarship (renderScholarship()), and ID Cards (id-cards.astro — file
+// already exists in the repo, status of its port unverified). All three
+// gated the same way their old-app FINANCE_ROLES/allowed lists require
+// where known; ID Cards has no confirmed role restriction from the old
+// app yet, so it's shown to the same roles as the rest of this nav for
+// now — revisit if that old-app function ever gets checked directly.
 import '../styles/global.css';
 
 interface Props {
@@ -30,6 +39,10 @@ const { title, activePath, role = '' } = Astro.props;
 const showSettings = role === 'super_admin';
 // Finance is restricted to Admin, Bursar and School Director in the old
 // app (index.html line ~13567) — head_teacher/principal don't get it.
+// Fee Receipts and Scholarship use the same allowed-role list in the old
+// app (renderFeeReceipts()/renderScholarship() both check
+// ['super_admin','admin','proprietor','bursar','cashier'] — 'cashier'
+// isn't a role this app's auth system has yet, so it's omitted here).
 const financeRoles = ['super_admin', 'admin', 'bursar', 'proprietor'];
 const showFinance = financeRoles.includes(role);
 const attendanceHref = role === 'teacher' ? '/staff/attendance' : '/admin/attendance';
@@ -42,8 +55,14 @@ const navItems = [
   { href: '/admin/results', label: 'Results' },
   { href: '/admin/combined-pdf', label: 'Combined PDF' },
   { href: attendanceHref, label: 'Attendance' },
-  ...(showFinance ? [{ href: '/admin/finance-records', label: 'Finance' }] : []),
+  ...(showFinance ? [
+    { href: '/admin/finance-records', label: 'Finance' },
+    { href: '/admin/fee-receipts', label: 'Fee Receipts' },
+    { href: '/admin/payroll', label: 'Payroll' },
+  ] : []),
   { href: '/admin/cbt', label: 'CBT Exams' },
+  ...(showFinance ? [{ href: '/admin/scholarship', label: 'Scholarship' }] : []),
+  { href: '/admin/id-cards', label: 'ID Cards' },
   { href: '/admin/announcements', label: 'Announce' },
   ...(showSettings ? [{ href: '/admin/settings', label: 'Settings' }] : []),
 ];
@@ -55,7 +74,7 @@ const navItems = [
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{title} · VIS Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body class="min-h-screen bg-brand-cream font-body text-body">
   <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
