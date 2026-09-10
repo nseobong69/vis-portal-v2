@@ -1,1 +1,131 @@
+---
+// Read-only attendance history for a parent, scoped to their own
+// children via parent_child_links (the same table the old app uses for
+// parent-child scoping elsewhere, e.g. index.html ~L21311-21321). Child
+// switching is a plain link + query param (?child=id) rather than a
+// client component, since this whole page is read-only.
+import ParentLayout from '../../layouts/ParentLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
 
+const auth = await checkAuth(Astro.cookies, ['parent']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: links, error: linksErr } = await supabase
+  .from('parent_child_links')
+  .select('student_id, students(id, full_name, class_name)')
+  .eq('parent_id', auth.userId);
+
+const children = (links || []).map((l: any) => l.students).filter(Boolean);
+const requestedChildId = Astro.url.searchParams.get('child');
+const activeChild = children.find((c: any) => c.id === requestedChildId) || children[0] || null;
+
+let rows: any[] = [];
+let recordsErr: any = null;
+if (activeChild) {
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('student_id', activeChild.id)
+    .order('date', { ascending: false })
+    .limit(200);
+  rows = data || [];
+  recordsErr = error;
+}
+
+const total = rows.length;
+const fullyPresent = rows.filter((r) => r.morning_status === 'present' && r.afternoon_status === 'present').length;
+const pct = total ? Math.round((fullyPresent / total) * 100) : 0;
+---
+<ParentLayout title="Attendance" activePath="/parent/attendance">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Attendance</h1>
+      <p class="text-sm text-brand-brown-light">Read-only — marked by the class teacher.</p>
+    </div>
+
+    {(linksErr || recordsErr) && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load attendance: {(linksErr || recordsErr)?.message}
+      </div>
+    )}
+
+    {children.length === 0 ? (
+      <div class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-9 text-center text-brand-brown-light">
+        No children linked to this account yet.
+      </div>
+    ) : (
+      <>
+        {children.length > 1 && (
+          <div class="flex gap-2 flex-wrap">
+            {children.map((c: any) => (
+              <a
+                href={`/parent/attendance?child=${c.id}`}
+                class:list={[
+                  'px-3 py-1.5 rounded-full text-sm border',
+                  activeChild?.id === c.id ? 'bg-brand-gold/20 border-brand-gold text-brand-brown-dark font-semibold' : 'border-brand-cream-dark text-brand-brown-light',
+                ]}
+              >
+                {c.full_name}
+              </a>
+            ))}
+          </div>
+        )}
+
+        <div class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 flex gap-8">
+          <div>
+            <div class="text-sm text-brand-brown-light">{activeChild?.full_name} · {activeChild?.class_name}</div>
+          </div>
+          <div>
+            <div class="text-sm text-brand-brown-light">Days Recorded</div>
+            <div class="text-2xl font-bold text-brand-brown-dark">{total}</div>
+          </div>
+          <div>
+            <div class="text-sm text-brand-brown-light">Attendance Rate</div>
+            <div class="text-2xl font-bold text-success-700">{pct}%</div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-lg border border-brand-cream-dark shadow-sm overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-brand-cream text-xs uppercase text-brand-brown-light">
+              <tr>
+                <th class="text-left px-4 py-2.5">Date</th>
+                <th class="text-left px-4 py-2.5">Day</th>
+                <th class="text-left px-4 py-2.5">Morning</th>
+                <th class="text-left px-4 py-2.5">Afternoon</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr><td colspan="4" class="text-center px-4 py-8 text-brand-brown-light">No attendance recorded yet.</td></tr>
+              )}
+              {rows.map((r) => (
+                <tr class="border-t border-brand-cream-dark">
+                  <td class="px-4 py-2.5">{r.date}</td>
+                  <td class="px-4 py-2.5">{r.day_of_week}</td>
+                  <td class="px-4 py-2.5">
+                    <span class={r.morning_status === 'present' ? 'text-success-700' : 'text-danger-700'}>
+                      {r.morning_status === 'present' ? '✓ Present' : '○ Absent'}
+                    </span>
+                  </td>
+                  <td class="px-4 py-2.5">
+                    <span class={r.afternoon_status === 'present' ? 'text-success-700' : 'text-danger-700'}>
+                      {r.afternoon_status === 'present' ? '✓ Present' : '○ Absent'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    )}
+  </div>
+</ParentLayout>
