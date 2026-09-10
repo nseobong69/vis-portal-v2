@@ -62,16 +62,23 @@ export function grade(total: number | string | null | undefined): GradeBand {
   if (v == null || isNaN(v as number)) return { min: 0, max: 0, g: '—', r: '—', c: '#999' };
   return GS.find((x) => (v as number) >= x.min && (v as number) <= x.max) ?? GS[GS.length - 1];
 }
-// PASS_MARK in the old app is a school-settings-driven function; the report
-// card's own Pass/Fail Rule legend (hardcoded in the template, see below)
-// has always read "0–43% → FAIL / 44–100% → PASS", so 44 is the effective
-// constant actually driving pf/pfColor in this feature specifically.
-const PASS_MARK = 44;
-export function passFail(avg: number | string): 'PASS' | 'FAIL' {
-  return parseFloat(String(avg)) >= PASS_MARK ? 'PASS' : 'FAIL';
+// FIXED: the old app's real PASS/FAIL computation is dynamic —
+// PASS_MARK() (index.html ~L5348) reads SCHOOL_SETTINGS.pass_mark,
+// defaulting to 40 (confirmed against the live school_settings schema:
+// `pass_mark numeric default 40`). An earlier version of this file
+// hardcoded 44 here, copying the report card's own *legend text*
+// ("0–43% → FAIL / 44–100% → PASS") — which is a separate, static string
+// in the old app's template that was never actually wired to
+// PASS_MARK(). That's a real inconsistency in the old app itself (the
+// PASS/FAIL badge could read PASS at 40% while the legend beside it
+// claims 44% was needed); ported correctly here by making both dynamic
+// instead of carrying the mismatch forward.
+export const DEFAULT_PASS_MARK = 40;
+export function passFail(avg: number | string, passMark: number = DEFAULT_PASS_MARK): 'PASS' | 'FAIL' {
+  return parseFloat(String(avg)) >= passMark ? 'PASS' : 'FAIL';
 }
-export function passFailColor(avg: number | string): string {
-  return parseFloat(String(avg)) >= PASS_MARK ? '#15803D' : '#B91C1C';
+export function passFailColor(avg: number | string, passMark: number = DEFAULT_PASS_MARK): string {
+  return parseFloat(String(avg)) >= passMark ? '#15803D' : '#B91C1C';
 }
 
 // ── Affective trait scale — identical labels/letters/colors ────────────────
@@ -136,14 +143,16 @@ export interface ResultRow {
   grade?: string | null;
 }
 
-/** Mirrors calcTotals(results). */
-export function calcTotals(results: ResultRow[]) {
+/** Mirrors calcTotals(results). passMark now threaded through from
+ *  SCHOOL_SETTINGS.pass_mark by the caller (see combinedPdf.ts) instead
+ *  of assumed — see the DEFAULT_PASS_MARK comment above for why. */
+export function calcTotals(results: ResultRow[], passMark: number = DEFAULT_PASS_MARK) {
   const arr = results || [];
   const grand = arr.reduce((a, r) => a + (parseFloat(String(r.total)) || 0), 0);
   const totalObtainable = arr.length * 100;
   const avg = arr.length ? parseFloat((grand / arr.length).toFixed(1)) : 0;
-  const pf = passFail(avg);
-  const pfColor = passFailColor(avg);
+  const pf = passFail(avg, passMark);
+  const pfColor = passFailColor(avg, passMark);
   return { grand, totalObtainable, avg, pf, pfColor };
 }
 
@@ -233,6 +242,9 @@ export function buildResultSheet(args: BuildResultSheetArgs): string {
 
   // ── Resolve signature data ────────────────────────────────────────────
   const isKNP = isPupilClass(student?.class_name);
+  // Real pass mark from school_settings.pass_mark (default 40) — drives
+  // this legend AND pf/pfColor consistently now, see DEFAULT_PASS_MARK.
+  const passMark = Number(SS.pass_mark) || DEFAULT_PASS_MARK;
   const csd = classSigData || {};
   const ctName = csd.ctName || SS.class_teacher_name || '';
   const ctTitle = csd.ctTitle || SS.class_teacher_title || 'Class Teacher';
@@ -465,8 +477,8 @@ export function buildResultSheet(args: BuildResultSheetArgs): string {
       </table>
       <div style="margin-top:4px;background:#F5ECD7;border:1px solid #C0A882;border-radius:4px;padding:5px 6px;">
         <div style="font-size:9px;font-weight:900;color:#241209;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">Pass / Fail Rule</div>
-        <div style="font-size:8.5px;color:#6B4F3A;margin-bottom:1px;">0–43% → <span style="color:#B91C1C;font-weight:900;">FAIL</span></div>
-        <div style="font-size:8.5px;color:#6B4F3A;">44–100% → <span style="color:#15803D;font-weight:900;">PASS</span></div>
+        <div style="font-size:8.5px;color:#6B4F3A;margin-bottom:1px;">0–${passMark - 1}% → <span style="color:#B91C1C;font-weight:900;">FAIL</span></div>
+        <div style="font-size:8.5px;color:#6B4F3A;">${passMark}–100% → <span style="color:#15803D;font-weight:900;">PASS</span></div>
       </div>
       <div style="margin-top:9px;background:#F5ECD7;border:1px solid #C0A882;border-radius:4px;padding:4px 6px;position:relative;">
         <div style="position:absolute;top:-5px;left:8px;right:8px;height:1.5px;background:repeating-linear-gradient(90deg,#B08D57 0,#B08D57 4px,transparent 4px,transparent 8px);"></div>
