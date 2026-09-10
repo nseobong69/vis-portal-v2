@@ -1,0 +1,101 @@
+---
+// Shell for teacher/subject_teacher screens. Wraps pages — does NOT
+// replace the real per-route auth check, which happens in each page's
+// own frontmatter before this layout is even reached (Section 3).
+//
+// Nav modeled directly on the old app's MENUS.teacher / MENUS.subject_teacher
+// (index.html ~L6486-6511), not just the handful of pages that happened
+// to exist when this file was first written. The two roles get slightly
+// different items/labels there, ported here as-is:
+//   - subject_teacher has NO Class Hub entry — the old app's own comment
+//     on that menu says so explicitly ("no Class Hub access").
+//   - subject_teacher's labels read "My Class Students" / "My CBT Exams"
+//     where teacher's read "My Students" / "CBT Exams".
+//   - Combined PDF is teacher-only in the old app's own menu list (not
+//     present in MENUS.subject_teacher at all) — kept that restriction
+//     here rather than linking a page that role was never meant to reach.
+//
+// Link targets, and why each points where it does:
+//   - Dashboard, Class Hub, Attendance, Results (Enter Scores), Score
+//     Sheet, Mark Sheet: real pages already in src/pages/staff/.
+//   - Combined PDF, CBT Exams, Announcements: the old app has these on
+//     the SAME menu as Attendance/Results, but in this repo they were
+//     built under src/pages/admin/ (combined-pdf.astro, cbt.astro,
+//     announcements.astro) rather than src/pages/staff/ — all three
+//     already allow the teacher/subject_teacher roles server-side (see
+//     each page's checkAuth allow-list), so linking there is correct
+//     today, not a workaround. Combined PDF's admin page does NOT allow
+//     subject_teacher, matching the old app's menu.
+//   - Academics, My Students/Register Student, My Profile: in the old
+//     app's menu (renderAcademics / renderStudents / showAddStudentModal
+//     / renderProfile) but no matching page exists anywhere in this repo
+//     yet for the teacher/subject_teacher role (only an /admin/students
+//     screen exists, and it isn't scoped to "my class" the way the old
+//     app's teacher-facing renderStudents was). Deliberately left OUT of
+//     navItems below rather than linked to a route that would 404 — add
+//     them once a real staff-scoped students page is built.
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  activePath: string;
+  role?: string;
+}
+const { title, activePath, role = 'teacher' } = Astro.props;
+const isSubjectTeacher = role === 'subject_teacher';
+
+const navItems = [
+  { href: '/staff/dashboard', label: 'Dashboard' },
+  ...(isSubjectTeacher ? [] : [{ href: '/staff/class-hub', label: 'Class Hub' }]),
+  { href: '/staff/results', label: 'Enter Scores' },
+  { href: '/staff/score-sheet', label: 'Score Sheet' },
+  ...(isSubjectTeacher ? [] : [{ href: '/staff/mark-sheet', label: 'Mark Sheet' }]),
+  ...(isSubjectTeacher ? [] : [{ href: '/admin/combined-pdf', label: 'Combined PDF' }]),
+  { href: '/admin/cbt', label: isSubjectTeacher ? 'My CBT Exams' : 'CBT Exams' },
+  { href: '/staff/attendance', label: 'Attendance' },
+  { href: '/admin/announcements', label: 'Announcements' },
+];
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} · VIS Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="min-h-screen bg-brand-cream font-body text-body">
+  <nav class="bg-shell-obsidian text-shell-text sticky top-0 z-40 border-b border-white/10">
+    <div class="max-w-[1400px] mx-auto px-5 h-16 flex items-center justify-between gap-4 overflow-x-auto">
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="w-9 h-9 rounded-md bg-gradient-to-br from-brand-gold to-brand-gold-dark shadow-gold"></div>
+        <span class="font-heading font-bold text-brand-gold text-[15px]">VIS Portal</span>
+      </div>
+      <div class="flex items-center gap-1 text-xs shrink-0">
+        {navItems.map((item) => (
+          <a
+            href={item.href}
+            class:list={[
+              'px-3 py-1.5 rounded-md transition-colors whitespace-nowrap',
+              activePath === item.href
+                ? 'bg-white/10 text-brand-gold font-semibold'
+                : 'text-shell-muted hover:text-shell-text',
+            ]}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
+      {role && (
+        <span class="shrink-0 text-[10px] font-bold tracking-wide uppercase text-brand-gold bg-white/10 px-2.5 py-1 rounded-full">
+          {role.replace('_', ' ')}
+        </span>
+      )}
+    </div>
+  </nav>
+  <main class="max-w-[1400px] mx-auto px-5 py-8">
+    <slot />
+  </main>
+</body>
+</html>
