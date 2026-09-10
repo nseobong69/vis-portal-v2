@@ -12,6 +12,13 @@
 // approach Phase 3/3b/3c/3d used for Public/Parent/Student). `showSettings`
 // gates School Settings to super_admin only, matching Phase 0 finding
 // (only super_admin gets Settings; admin/proprietor do not).
+//
+// CHANGED from the previous version: the "Attendance" link now branches
+// by role — teachers go to the day-by-day marking screen
+// (/staff/attendance), admin-tier roles go to the read-only oversight
+// screen (/admin/attendance). "Finance" now points at the fuller Finance
+// Records screen (/admin/finance-records: ledger/summary/expenditure);
+// Fee Configuration is still reachable from a link on that page.
 import '../styles/global.css';
 
 interface Props {
@@ -25,6 +32,7 @@ const showSettings = role === 'super_admin';
 // app (index.html line ~13567) — head_teacher/principal don't get it.
 const financeRoles = ['super_admin', 'admin', 'bursar', 'proprietor'];
 const showFinance = financeRoles.includes(role);
+const attendanceHref = role === 'teacher' ? '/staff/attendance' : '/admin/attendance';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard' },
@@ -33,8 +41,8 @@ const navItems = [
   { href: '/admin/classes', label: 'Classes' },
   { href: '/admin/results', label: 'Results' },
   { href: '/admin/combined-pdf', label: 'Combined PDF' },
-  { href: '/admin/attendance', label: 'Attendance' },
-  ...(showFinance ? [{ href: '/admin/fees', label: 'Finance' }] : []),
+  { href: attendanceHref, label: 'Attendance' },
+  ...(showFinance ? [{ href: '/admin/finance-records', label: 'Finance' }] : []),
   { href: '/admin/cbt', label: 'CBT Exams' },
   { href: '/admin/announcements', label: 'Announce' },
   ...(showSettings ? [{ href: '/admin/settings', label: 'Settings' }] : []),
