@@ -158,9 +158,6 @@ export default function CbtExamsManager({ exams, classes, subjects }: Props) {
                       Close
                     </button>
                   )}
-                  <a href={`/admin/cbt/${e.id}/questions`} className="text-info-700 hover:underline">
-                    Questions
-                  </a>
                   <button onClick={() => handleDelete(e.id)} className="text-danger-700 hover:underline">
                     Delete
                   </button>
