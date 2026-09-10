@@ -15,9 +15,23 @@ const FINANCE_ROLES = ['super_admin', 'admin', 'proprietor', 'bursar'];
 // test, so it isn't ported — "Record Payment" here is the manual/cash
 // equivalent (same as the old app's own Bulk Cash / manual-approval path,
 // not the card-payment path).
+//
+// createInvoicesBulk added: the old app's showFeeModal() always creates
+// invoices for a whole class at once (with per-student New/Old-student
+// amount overrides), not one at a time. createInvoice (singular) is kept
+// for backward compatibility but the UI now uses the bulk action.
+
+interface StudentTarget {
+  studentId: string;
+  studentName: string;
+  admissionNumber: string;
+  className: string;
+  amount: number;
+  amountPaid?: number;
+}
 
 interface Body {
-  action: 'createInvoice' | 'recordPayment' | 'deleteInvoice' | 'addExpenditure' | 'deleteExpenditure' | 'studentsByClass';
+  action: 'createInvoice' | 'createInvoicesBulk' | 'recordPayment' | 'deleteInvoice' | 'addExpenditure' | 'deleteExpenditure' | 'studentsByClass';
   id?: string;
   classId?: string;
   studentId?: string;
@@ -32,6 +46,7 @@ interface Body {
   reason?: string;
   date?: string;
   expAmount?: number;
+  targets?: StudentTarget[];
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -53,7 +68,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!body.classId) return new Response(JSON.stringify({ error: 'Missing classId.' }), { status: 400 });
     const { data, error } = await supabase
       .from('students')
-      .select('id, full_name, admission_number, class_name')
+      .select('id, full_name, admission_number, class_name, student_type')
       .eq('class_id', body.classId)
       .order('full_name');
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
@@ -87,6 +102,42 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const { data, error } = await supabase.from('fee_payments').insert(record).select().single();
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     return new Response(JSON.stringify({ ok: true, invoice: data }), { status: 200 });
+  }
+
+  // Bulk path — mirrors showFeeModal()/saveInvoices(): one invoice per
+  // selected student, each can carry its own resolved amount (the
+  // New-student vs Old-student split happens client-side before this
+  // is called; by the time it gets here every target already has its
+  // final per-student amount).
+  if (body.action === 'createInvoicesBulk') {
+    if (!body.targets?.length || !body.feeType || !body.term || !body.session) {
+      return new Response(JSON.stringify({ error: 'At least one student, fee type, term and session are required.' }), { status: 400 });
+    }
+    const records = body.targets.map((t) => {
+      const amount = Number(t.amount) || 0;
+      const paid = Number(t.amountPaid) || 0;
+      const bal = Math.max(0, amount - paid);
+      const status = bal <= 0 && amount > 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+      return {
+        student_id: t.studentId,
+        student_name: t.studentName || null,
+        admission_number: t.admissionNumber || null,
+        class_name: t.className || null,
+        fee_type: body.feeType,
+        amount,
+        amount_paid: paid || null,
+        status,
+        payment_method: paid > 0 ? 'Cash' : null,
+        approved_by: paid > 0 ? auth.userId : null,
+        term: body.term,
+        session: body.session,
+        created_by: auth.userId,
+        paid_at: paid > 0 ? new Date().toISOString() : null,
+      };
+    });
+    const { data, error } = await supabase.from('fee_payments').insert(records).select();
+    if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    return new Response(JSON.stringify({ ok: true, invoices: data, count: data?.length || 0 }), { status: 200 });
   }
 
   if (body.action === 'recordPayment') {
