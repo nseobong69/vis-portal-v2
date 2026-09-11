@@ -39,10 +39,11 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const [{ data: payments, error }, { data: classes }, { data: expenditures }] = await Promise.all([
+const [{ data: payments, error }, { data: classes }, { data: expenditures }, { data: settings }] = await Promise.all([
   supabase.from('fee_payments').select('*').order('created_at', { ascending: false }).limit(500),
   supabase.from('classes').select('id, name, arm').order('name'),
   supabase.from('expenditures').select('*').order('date', { ascending: false }).limit(500),
+  supabase.from('school_settings').select('paystack_public_key').eq('id', 1).single(),
 ]);
 ---
 <AdminLayout title="Finance Records" activePath="/admin/finance-records" role={auth.role}>
@@ -58,11 +59,22 @@ const [{ data: payments, error }, { data: classes }, { data: expenditures }] = a
       </div>
     )}
 
+    {/*
+      KNOWN GAP: payerEmail isn't wired to the actual parent/student's
+      email — fee_payments has no email column, and this page doesn't
+      join to profiles/students for one. Paystack requires *some* email
+      (it sends the payment receipt there), so leaving this blank falls
+      back to a placeholder inside FinanceRecordsManager. Before this
+      goes live for real card payments, wire this to the real payer's
+      email — otherwise Paystack's receipt goes nowhere useful.
+    */}
     <FinanceRecordsManager
       client:load
       payments={(payments ?? []) as any}
       classes={(classes ?? []) as any}
       expenditures={(expenditures ?? []) as any}
+      paystackPublicKey={settings?.paystack_public_key || ''}
+      payerEmail=""
     />
   </div>
 </AdminLayout>
