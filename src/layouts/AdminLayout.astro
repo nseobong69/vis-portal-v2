@@ -28,6 +28,11 @@
 // where known; ID Cards has no confirmed role restriction from the old
 // app yet, so it's shown to the same roles as the rest of this nav for
 // now — revisit if that old-app function ever gets checked directly.
+//
+// ADDED: Class Hub — /staff/class-hub already allows super_admin/admin/
+// proprietor server-side (HUB_ALLOWED in src/lib/class-hub.ts) but had
+// no admin-side nav link pointing at it; this just exposes what was
+// already reachable.
 import '../styles/global.css';
 
 interface Props {
@@ -52,6 +57,7 @@ const navItems = [
   { href: '/admin/students', label: 'Students' },
   { href: '/admin/staff', label: 'Staff' },
   { href: '/admin/classes', label: 'Classes' },
+  { href: '/staff/class-hub', label: 'Class Hub' },
   { href: '/admin/results', label: 'Results' },
   { href: '/admin/combined-pdf', label: 'Combined PDF' },
   { href: attendanceHref, label: 'Attendance' },
