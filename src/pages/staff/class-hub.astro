@@ -1,0 +1,38 @@
+---
+// Real, server-served route at /staff/class-hub — direct URL loads hit
+// this file's actual server-rendered HTML (Astro output:'server'), no
+// client router involved. Same auth-then-render pattern as
+// /staff/attendance and /staff/results (Section 3 hard requirement).
+import StaffLayout from '../../layouts/StaffLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { HUB_ALLOWED } from '../../lib/class-hub';
+import ClassHubIsland from '../../components/staff/ClassHubIsland';
+
+// ── Step 1: server-side auth + role check, BEFORE any data is fetched ──
+// Feature Checklist row 2 (Class Hub): super_admin, admin, proprietor,
+// head_teacher, principal, teacher. A subject_teacher who is not also a
+// class teacher has no class to manage here — they get 403'd to the
+// dedicated Enter Scores page instead, matching the old app's
+// HUB_ALLOWED check inside renderClassHub().
+const auth = await checkAuth(Astro.cookies, HUB_ALLOWED);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+---
+<StaffLayout title="Class Hub">
+  <p class="text-sm text-brand-brown-light mb-4">
+    All class management in one place. Signed in as role:
+    <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+  </p>
+
+  <!--
+    client:load — the class picker and every tab need to be interactive
+    from first paint (select a class, switch tabs, edit tables), same
+    reasoning as AttendanceMarkerIsland / ResultsSheetIsland.
+  -->
+  <ClassHubIsland client:load role={auth.role} userId={auth.userId} />
+</StaffLayout>
