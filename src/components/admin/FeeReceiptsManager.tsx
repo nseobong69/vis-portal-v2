@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Button from '../ui/Button';
+import { buildInvoicePDF, buildReceiptPDF, loadImageForPdf, type SchoolSettingsForPdf, type FeeLine } from '../../lib/pdf/feePdf';
 
 interface ClassOption { id: string; label: string }
 
@@ -7,6 +8,7 @@ interface StudentRow {
   student: { id: string; full_name: string; admission_number?: string; class_name?: string };
   totalInvoice: number;
   totalPaid: number;
+  feeLines: FeeLine[];
 }
 interface ApplicantRow {
   student_name?: string;
@@ -22,6 +24,7 @@ interface Props {
   classes: ClassOption[];
   defaultSession: string;
   defaultTerm: string;
+  schoolSettings: SchoolSettingsForPdf & { logo_url?: string };
 }
 
 function naira(n: number) {
@@ -37,7 +40,7 @@ function StatCard({ label, value, color, bg }: { label: string; value: string; c
   );
 }
 
-export default function FeeReceiptsManager({ classes, defaultSession, defaultTerm }: Props) {
+export default function FeeReceiptsManager({ classes, defaultSession, defaultTerm, schoolSettings }: Props) {
   const [classId, setClassId] = useState('');
   const [session, setSession] = useState(defaultSession);
   const [term, setTerm] = useState(defaultTerm);
@@ -46,10 +49,83 @@ export default function FeeReceiptsManager({ classes, defaultSession, defaultTer
   const [studentRows, setStudentRows] = useState<StudentRow[]>([]);
   const [applicantRows, setApplicantRows] = useState<ApplicantRow[]>([]);
   const [error, setError] = useState('');
+  const [bulkBusy, setBulkBusy] = useState<'invoice' | 'receipt' | null>(null);
+  const [bulkProgress, setBulkProgress] = useState('');
+  const [singleBusyId, setSingleBusyId] = useState<string | null>(null);
+
+  // Logo fetched once and reused across PDFs, same as the old app's
+  // _bulkDownloadFee() (index.html ~25293-25310).
+  let cachedLogo: string | null | undefined; // undefined = not yet attempted
+  async function getLogo(): Promise<string | null> {
+    if (cachedLogo !== undefined) return cachedLogo;
+    if (!schoolSettings.logo_url) { cachedLogo = null; return null; }
+    try { cachedLogo = await loadImageForPdf(schoolSettings.logo_url); }
+    catch { cachedLogo = null; }
+    return cachedLogo;
+  }
+
+  function safeName(n: string) { return (n || 'Student').replace(/\s+/g, '_'); }
+
+  async function downloadInvoice(row: StudentRow) {
+    setSingleBusyId(row.student.id + '-inv');
+    try {
+      const logo = await getLogo();
+      const filtered = row.feeLines.filter((a) => (!session || a.session === session) && (!term || a.term === term));
+      const pdf = buildInvoicePDF(row.student, filtered, session, term, schoolSettings, logo);
+      pdf.save(`Invoice_${safeName(row.student.full_name)}_${(term || '').replace(/\s+/g, '')}_${session || ''}.pdf`);
+    } finally {
+      setSingleBusyId(null);
+    }
+  }
+
+  async function downloadReceipt(row: StudentRow) {
+    setSingleBusyId(row.student.id + '-rec');
+    try {
+      const logo = await getLogo();
+      const filtered = row.feeLines.filter((p) => (!session || p.session === session) && (!term || p.term === term) && (parseFloat(String(p.amount_paid)) || 0) > 0);
+      const pdf = buildReceiptPDF(row.student, filtered, session, term, schoolSettings, logo);
+      pdf.save(`Receipt_${safeName(row.student.full_name)}_${(term || '').replace(/\s+/g, '')}_${session || ''}.pdf`);
+    } finally {
+      setSingleBusyId(null);
+    }
+  }
+
+  // Same sequential-with-gap approach as _bulkDownloadFee() (index.html
+  // ~25289-25330) to avoid jsPDF instance conflicts when saving many
+  // PDFs back-to-back in the same tab.
+  async function bulkDownload(type: 'invoice' | 'receipt') {
+    if (!studentRows.length) { setError('Load students first.'); return; }
+    setBulkBusy(type);
+    setError('');
+    const logo = await getLogo();
+    const total = studentRows.length;
+    let done = 0;
+    for (const row of studentRows) {
+      done++;
+      setBulkProgress(`${done} / ${total} \u2014 ${row.student.full_name || ''}`);
+      try {
+        if (type === 'invoice') {
+          const filtered = row.feeLines.filter((a) => (!session || a.session === session) && (!term || a.term === term));
+          const pdf = buildInvoicePDF(row.student, filtered, session, term, schoolSettings, logo);
+          pdf.save(`Invoice_${safeName(row.student.full_name)}_${(term || '').replace(/\s+/g, '')}_${session || ''}.pdf`);
+        } else {
+          const filtered = row.feeLines.filter((p) => (!session || p.session === session) && (!term || p.term === term) && (parseFloat(String(p.amount_paid)) || 0) > 0);
+          const pdf = buildReceiptPDF(row.student, filtered, session, term, schoolSettings, logo);
+          pdf.save(`Receipt_${safeName(row.student.full_name)}_${(term || '').replace(/\s+/g, '')}_${session || ''}.pdf`);
+        }
+      } catch {
+        // one student's PDF failing shouldn't stop the batch
+      }
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    setBulkProgress(`Done \u2014 ${total} ${type === 'invoice' ? 'invoices' : 'receipts'} downloaded.`);
+    setBulkBusy(null);
+  }
 
   async function load() {
     setLoading(true);
     setError('');
+    setMode(null);
     try {
       const res = await fetch('/api/admin/fee-receipts/query', {
         method: 'POST',
@@ -147,20 +223,28 @@ export default function FeeReceiptsManager({ classes, defaultSession, defaultTer
             <StatCard label="Total Paid" value={naira(grandPaid)} color="#16A34A" bg="#DCFCE7" />
             <StatCard label="Balance" value={naira(grandInvoice - grandPaid)} color="#D97706" bg="#FEF3C7" />
           </div>
-          <p className="text-xs bg-amber-50 text-amber-800 rounded-md px-3 py-2">
-            Invoice/Receipt PDF download buttons aren't wired up yet — that's a separate PDF-generation pass (school letterhead, signatures/stamps, line items). This screen covers the live data and totals.
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button type="button" variant="secondary" style={{ background: '#DBEAFE', color: '#1D4ED8' }} onClick={() => bulkDownload('invoice')} disabled={bulkBusy !== null}>
+              {bulkBusy === 'invoice' ? 'Downloading…' : '📄 Download All Invoices'}
+            </Button>
+            <Button type="button" variant="secondary" style={{ background: '#DCFCE7', color: '#15803D' }} onClick={() => bulkDownload('receipt')} disabled={bulkBusy !== null}>
+              {bulkBusy === 'receipt' ? 'Downloading…' : '🧾 Download All Receipts'}
+            </Button>
+            {bulkProgress && <span className="text-xs text-brand-brown-light font-medium">{bulkProgress}</span>}
+          </div>
           <div className="bg-white rounded-lg border border-brand-cream-dark overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 700 }}>
+            <table className="w-full text-sm" style={{ minWidth: 780 }}>
               <thead>
                 <tr className="text-left text-xs text-brand-brown-light border-b border-brand-cream-dark">
                   <th className="px-4 py-2">Name</th><th className="px-4 py-2">Adm No</th><th className="px-4 py-2">Class</th>
                   <th className="px-4 py-2">Total Invoice</th><th className="px-4 py-2">Total Paid</th><th className="px-4 py-2">Balance</th>
+                  <th className="px-4 py-2" style={{ minWidth: 170 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {studentRows.length === 0 && <tr><td colSpan={6} className="text-center py-7 text-brand-brown-light">No students found.</td></tr>}
-                {studentRows.map(({ student: s, totalInvoice, totalPaid }) => {
+                {studentRows.length === 0 && <tr><td colSpan={7} className="text-center py-7 text-brand-brown-light">No students found.</td></tr>}
+                {studentRows.map((row) => {
+                  const { student: s, totalInvoice, totalPaid } = row;
                   const bal = totalInvoice - totalPaid;
                   return (
                     <tr key={s.id} className="border-b border-brand-cream-dark last:border-0">
@@ -170,6 +254,16 @@ export default function FeeReceiptsManager({ classes, defaultSession, defaultTer
                       <td className="px-4 py-2 font-bold" style={{ color: '#2563EB' }}>{naira(totalInvoice)}</td>
                       <td className="px-4 py-2 font-bold" style={{ color: '#16A34A' }}>{naira(totalPaid)}</td>
                       <td className="px-4 py-2 font-bold" style={{ color: bal > 0 ? '#D97706' : '#16A34A' }}>{naira(bal)}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex gap-1.5">
+                          <button onClick={() => downloadInvoice(row)} disabled={singleBusyId !== null} className="text-xs px-2 py-1 rounded-sm" style={{ background: '#DBEAFE', color: '#2563EB' }} title="Invoice PDF">
+                            {singleBusyId === s.id + '-inv' ? '…' : '📄 Invoice'}
+                          </button>
+                          <button onClick={() => downloadReceipt(row)} disabled={singleBusyId !== null} className="text-xs px-2 py-1 rounded-sm" style={{ background: '#DCFCE7', color: '#16A34A' }} title="Receipt PDF">
+                            {singleBusyId === s.id + '-rec' ? '…' : '🧾 Receipt'}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
