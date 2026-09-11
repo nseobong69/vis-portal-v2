@@ -53,7 +53,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuFee = (payments || []).filter((p) => p.student_id === s.id);
     const totalInvoice = stuFee.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
     const totalPaid = stuFee.reduce((sum, p) => sum + (parseFloat(p.amount_paid) || 0), 0);
-    return { student: s, totalInvoice, totalPaid };
+    // Line items travel with each row so the client can build Invoice/
+    // Receipt PDFs without a second round trip per student.
+    return { student: s, totalInvoice, totalPaid, feeLines: stuFee };
   });
 
   return new Response(JSON.stringify({ mode: 'students', rows }), { status: 200 });
