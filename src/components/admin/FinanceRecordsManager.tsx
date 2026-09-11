@@ -24,6 +24,8 @@ interface Props {
   payments: Payment[];
   classes: ClassOption[];
   expenditures: Expenditure[];
+  paystackPublicKey?: string;
+  payerEmail?: string;
 }
 
 const TERMS = ['1st Term', '2nd Term', '3rd Term'];
@@ -245,14 +247,22 @@ function InvoiceForm({ classes, onSaved }: { classes: ClassOption[]; onSaved: (i
 }
 
 /** Replaces the old prompt()-based flow with a real modal, matching the
- * old app's own dedicated "Record Payment — {name}" screen. */
-function RecordPaymentModal({ payment, onClose, onSaved }: { payment: Payment; onClose: () => void; onSaved: (status: string, amountPaid: number) => void }) {
+ * old app's own dedicated "Record Payment — {name}" screen. Now includes
+ * a real Paystack option alongside manual/cash — ported from
+ * runPaystackFee() (index.html ~14468-14519): loads the Paystack Inline
+ * widget, then server-verifies the reference via the existing
+ * /api/admissions/paystack-verify.ts (generic, reused as-is — it isn't
+ * admission-specific despite the folder name) before ever crediting the
+ * payment. REQUIRES a real paystack_public_key in School Settings AND
+ * PAYSTACK_SECRET_KEY set server-side — untested here without both. */
+function RecordPaymentModal({ payment, paystackPublicKey, payerEmail, onClose, onSaved }: { payment: Payment; paystackPublicKey: string; payerEmail: string; onClose: () => void; onSaved: (status: string, amountPaid: number) => void }) {
   const [amountPaid, setAmountPaid] = useState(String(payment.amount_paid || ''));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [paystackBusy, setPaystackBusy] = useState(false);
   const balance = Math.max(0, Number(payment.amount) - (Number(amountPaid) || 0));
 
-  async function submit() {
+  async function submitManual() {
     if (amountPaid === '' || Number(amountPaid) < 0) {
       setError('Enter a valid amount.');
       return;
@@ -260,12 +270,83 @@ function RecordPaymentModal({ payment, onClose, onSaved }: { payment: Payment; o
     setSaving(true);
     setError('');
     try {
-      const data = await callAPI({ action: 'recordPayment', id: payment.id, amountPaid: Number(amountPaid) });
+      const data = await callAPI({ action: 'recordPayment', id: payment.id, amountPaid: Number(amountPaid), method: 'Cash' });
       onSaved(data.status, Number(amountPaid));
     } catch (e: any) {
       setError(e.message || 'Could not record payment.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  function ensurePaystackScript(): Promise<void> {
+    if ((window as any).PaystackPop) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://js.paystack.co/v1/inline.js';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Could not load Paystack. Check your internet connection.'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function payWithPaystack() {
+    setError('');
+    if (!paystackPublicKey) {
+      setError('Paystack public key not configured. Add it in School Settings → Payment Gateways.');
+      return;
+    }
+    const amt = Number(amountPaid);
+    if (!amt || amt <= 0) {
+      setError('Enter the amount to pay before starting Paystack checkout.');
+      return;
+    }
+    setPaystackBusy(true);
+    try {
+      await ensurePaystackScript();
+      const PaystackPop = (window as any).PaystackPop;
+      if (!PaystackPop) throw new Error('Paystack did not load correctly. Please refresh and try again.');
+
+      PaystackPop.setup({
+        key: paystackPublicKey,
+        email: payerEmail || 'payer@example.com',
+        amount: Math.round(amt) * 100, // kobo
+        currency: 'NGN',
+        ref: 'VIS-' + Date.now(),
+        callback: (res: any) => {
+          (async () => {
+            const reference = res.reference || res.trxref;
+            try {
+              // Server-side verification — never trust the client
+              // popup's own "success" callback as proof of payment.
+              const verifyRes = await fetch('/api/admissions/paystack-verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reference }),
+              });
+              const verify = await verifyRes.json();
+              if (!verifyRes.ok || !verify.success) {
+                setError(`Payment could not be verified (ref: ${reference}). Do NOT treat as paid — contact support before retrying.`);
+                setPaystackBusy(false);
+                return;
+              }
+              const data = await callAPI({ action: 'recordPayment', id: payment.id, amountPaid: verify.amount_naira || amt, method: 'Paystack', reference });
+              onSaved(data.status, verify.amount_naira || amt);
+            } catch (e: any) {
+              setError(e.message || 'Payment verification failed.');
+            } finally {
+              setPaystackBusy(false);
+            }
+          })();
+        },
+        onClose: () => {
+          setError('Payment window closed — no charge was made.');
+          setPaystackBusy(false);
+        },
+      }).openIframe();
+    } catch (e: any) {
+      setError(e.message || 'Could not open Paystack checkout.');
+      setPaystackBusy(false);
     }
   }
 
@@ -276,16 +357,23 @@ function RecordPaymentModal({ payment, onClose, onSaved }: { payment: Payment; o
         <Input id="rp-amount" label="Amount Paid (₦)" type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
         <div className="text-sm text-brand-brown-light">Balance remaining: <strong className="text-brand-brown-dark">₦{balance.toLocaleString()}</strong></div>
         {error && <div className="text-sm text-danger-700">{error}</div>}
-        <div className="flex justify-end gap-2 mt-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Save Payment'}</Button>
+        <div class="flex flex-col gap-2 mt-1">
+          <Button variant="primary" onClick={payWithPaystack} disabled={paystackBusy || saving}>
+            {paystackBusy ? 'Opening Paystack…' : '💳 Pay with Paystack'}
+          </Button>
+          <div className="flex justify-between gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="secondary" onClick={submitManual} disabled={saving || paystackBusy}>
+              {saving ? 'Saving…' : 'Record as Cash / Manual'}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
   );
 }
 
-function RecordsTab({ payments, classes }: { payments: Payment[]; classes: ClassOption[] }) {
+function RecordsTab({ payments, classes, paystackPublicKey, payerEmail }: { payments: Payment[]; classes: ClassOption[]; paystackPublicKey: string; payerEmail: string }) {
   const [list, setList] = useState(payments);
   const [term, setTerm] = useState('');
   const [session, setSession] = useState('');
@@ -361,6 +449,8 @@ function RecordsTab({ payments, classes }: { payments: Payment[]; classes: Class
       {payingRecord && (
         <RecordPaymentModal
           payment={payingRecord}
+          paystackPublicKey={paystackPublicKey}
+          payerEmail={payerEmail}
           onClose={() => setPayingId(null)}
           onSaved={(status, amountPaid) => {
             setList((prev) => prev.map((x) => (x.id === payingRecord.id ? { ...x, amount_paid: amountPaid, status } : x)));
@@ -486,7 +576,7 @@ function ExpenditureTab({ expenditures }: { expenditures: Expenditure[] }) {
   );
 }
 
-export default function FinanceRecordsManager({ payments, classes, expenditures }: Props) {
+export default function FinanceRecordsManager({ payments, classes, expenditures, paystackPublicKey = '', payerEmail = '' }: Props) {
   const [tab, setTab] = useState<0 | 1 | 2>(0);
   return (
     <div className="flex flex-col gap-4">
@@ -501,7 +591,7 @@ export default function FinanceRecordsManager({ payments, classes, expenditures 
           </button>
         ))}
       </div>
-      {tab === 0 && <RecordsTab payments={payments} classes={classes} />}
+      {tab === 0 && <RecordsTab payments={payments} classes={classes} paystackPublicKey={paystackPublicKey} payerEmail={payerEmail} />}
       {tab === 1 && <SummaryTab payments={payments} />}
       {tab === 2 && <ExpenditureTab expenditures={expenditures} />}
     </div>
