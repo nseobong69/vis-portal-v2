@@ -19,7 +19,9 @@ if (auth.status === 'unauthorized') {
 const supabase = createServerSupabase(Astro.cookies);
 const [{ data: classes }, { data: ssRows }] = await Promise.all([
   supabase.from('classes').select('id, name, arm').order('name'),
-  supabase.from('school_settings').select('current_session, current_term').eq('id', 1),
+  supabase.from('school_settings')
+    .select('current_session, current_term, school_name, address, phone1, email, logo_url, finance_signatory_name, finance_signatory_role')
+    .eq('id', 1),
 ]);
 const ss = ssRows?.[0] || {};
 const classOptions = (classes || []).map((c) => ({ id: c.id, label: `${c.name}${c.arm ? ' ' + c.arm : ''}` }));
@@ -35,6 +37,15 @@ const classOptions = (classes || []).map((c) => ({ id: c.id, label: `${c.name}${
       classes={classOptions}
       defaultSession={ss.current_session || ''}
       defaultTerm={ss.current_term || ''}
+      schoolSettings={{
+        school_name: ss.school_name,
+        address: ss.address,
+        phone1: ss.phone1,
+        email: ss.email,
+        logo_url: ss.logo_url,
+        finance_signatory_name: ss.finance_signatory_name,
+        finance_signatory_role: ss.finance_signatory_role,
+      }}
     />
   </div>
 </AdminLayout>
