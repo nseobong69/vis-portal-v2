@@ -47,6 +47,8 @@ interface Body {
   date?: string;
   expAmount?: number;
   targets?: StudentTarget[];
+  method?: string;
+  reference?: string;
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -149,9 +151,21 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const paid = Number(body.amountPaid);
     const bal = Math.max(0, Number(existing.amount) - paid);
     const status = bal <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+    // ADDED: method/reference — previously hardcoded to 'Cash', which
+    // was correct for the manual path but wrong once a real Paystack
+    // payment comes through runPaystackFee() equivalent below. Verified
+    // Paystack payments MUST pass method:'Paystack' + the real Paystack
+    // reference here, never a client-asserted 'paid' with no reference.
     const { error } = await supabase
       .from('fee_payments')
-      .update({ amount_paid: paid, status, payment_method: 'Cash', approved_by: auth.userId, paid_at: new Date().toISOString() })
+      .update({
+        amount_paid: paid,
+        status,
+        payment_method: body.method || 'Cash',
+        transaction_ref: body.reference || null,
+        approved_by: auth.userId,
+        paid_at: new Date().toISOString(),
+      })
       .eq('id', body.id);
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     return new Response(JSON.stringify({ ok: true, status }), { status: 200 });
