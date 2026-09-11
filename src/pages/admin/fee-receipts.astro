@@ -1,0 +1,40 @@
+---
+// Admin Portal — Fee Receipts
+// Was 404 (route didn't exist). Ported from renderFeeReceipts()/
+// loadFeeReceipts() (index.html ~24963-25060).
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import FeeReceiptsManager from '../../components/admin/FeeReceiptsManager';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+// Same access list as renderFeeReceipts() (index.html ~24965).
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'bursar', 'cashier']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const [{ data: classes }, { data: ssRows }] = await Promise.all([
+  supabase.from('classes').select('id, name, arm').order('name'),
+  supabase.from('school_settings').select('current_session, current_term').eq('id', 1),
+]);
+const ss = ssRows?.[0] || {};
+const classOptions = (classes || []).map((c) => ({ id: c.id, label: `${c.name}${c.arm ? ' ' + c.arm : ''}` }));
+---
+<AdminLayout title="Fee Receipts" activePath="/admin/fee-receipts" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Fee Receipts</h1>
+      <p class="text-sm text-brand-brown-light">All fee payments across classes, sessions and terms</p>
+    </div>
+    <FeeReceiptsManager
+      client:load
+      classes={classOptions}
+      defaultSession={ss.current_session || ''}
+      defaultTerm={ss.current_term || ''}
+    />
+  </div>
+</AdminLayout>
