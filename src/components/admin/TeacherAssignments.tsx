@@ -102,16 +102,9 @@ export default function TeacherAssignments() {
   const [tcTeacherId, setTcTeacherId] = useState('');
   const [tcClassIds, setTcClassIds] = useState<string[]>([]);
   const [classTeacherRows, setClassTeacherRows] = useState<ClassTeacherRow[]>([]);
-  const [tcDebug, setTcDebug] = useState('');
 
   async function loadClassTeacherRows() {
-    try {
-      const rows = await fetchClassTeacherList();
-      setClassTeacherRows(rows);
-      setTcDebug(`fetched ${rows.length} row(s) ok`);
-    } catch (e: any) {
-      setTcDebug(`ERROR: ${e?.message ?? String(e)}`);
-    }
+    setClassTeacherRows(await fetchClassTeacherList());
   }
 
   useEffect(() => {
@@ -326,7 +319,6 @@ export default function TeacherAssignments() {
           <Button onClick={handleAssignClassTeacher}>Assign</Button>
         </div>
         <div className="max-h-72 overflow-y-auto">
-          <p className="mb-2 text-[11px] font-mono text-red-600">DEBUG: {tcDebug || 'loading…'}</p>
           {classTeacherRows.length ? (
             classTeacherRows.map((r) => (
               <div key={r.id} className="flex items-center justify-between py-2 border-b border-brand-cream-dark text-sm">
