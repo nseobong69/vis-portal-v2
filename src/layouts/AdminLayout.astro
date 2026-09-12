@@ -52,25 +52,54 @@ const financeRoles = ['super_admin', 'admin', 'bursar', 'proprietor'];
 const showFinance = financeRoles.includes(role);
 const attendanceHref = role === 'teacher' ? '/staff/attendance' : '/admin/attendance';
 
+// Full link-out pass: every item from the old app's MENUS.super_admin
+// (index.html ~L6317-6353), in that same order, now has a link here —
+// including ones whose build status is unconfirmed. Purpose is
+// deliberately just "make it clickable" so each can be checked one by
+// one; a 404 or broken page here is the finding, not a mistake to fix
+// pre-emptively. Route guesses (no matching page found in any zip
+// reviewed so far) are marked UNCONFIRMED below — expect some of these
+// to 404 until verified.
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard' },
-  { href: '/admin/students', label: 'Students' },
-  { href: '/admin/staff', label: 'Staff' },
-  { href: '/admin/classes', label: 'Classes' },
   { href: '/staff/class-hub', label: 'Class Hub' },
+  { href: '/admin/students', label: 'Students' },
+  { href: '/admin/classes', label: 'Classes' },
+  { href: '/admin/subjects', label: 'Subjects' },
+  { href: '/admin/staff', label: 'Staff & Teachers' },
+  { href: '/admin/fix-name-order', label: 'Fix Name Order' },
+  { href: '/admin/assignments', label: 'Assignments' },
   { href: '/admin/results', label: 'Results' },
+  { href: '/admin/monitor-scores', label: 'Monitor Scores' },
+  { href: '/staff/score-sheet', label: 'Score Sheet' },
+  { href: '/staff/mark-sheet', label: 'Mark Sheet' },
   { href: '/admin/combined-pdf', label: 'Combined PDF' },
+  { href: '/admin/academics', label: 'Academics' },
+  { href: '/admin/cbt', label: 'CBT Exams' },
   { href: attendanceHref, label: 'Attendance' },
   ...(showFinance ? [
-    { href: '/admin/finance-records', label: 'Finance' },
+    { href: '/admin/finance-records', label: 'Finance & Fees' },
     { href: '/admin/fee-receipts', label: 'Fee Receipts' },
-    { href: '/admin/payroll', label: 'Payroll' },
+    { href: '/admin/payroll', label: 'Staff Payroll' },
+    { href: '/admin/fee-reminders', label: 'Fee Reminders' }, // UNCONFIRMED route
   ] : []),
-  { href: '/admin/cbt', label: 'CBT Exams' },
+  { href: '/admin/clearance', label: 'Student Clearance' },
+  { href: '/admin/subject-registration', label: 'Subject Reg' },
+  { href: '/admin/admissions', label: 'Admissions' },
+  { href: '/admin/aptitude-tests', label: 'Aptitude Tests' },
+  { href: '/admin/announcements', label: 'Announcements' },
+  { href: '/admin/public-posts', label: 'Public Posts' },
+  { href: '/admin/analytics', label: 'Analytics' },
+  ...(showSettings ? [{ href: '/admin/settings', label: 'School Settings' }] : []),
+  { href: '/admin/accounts/create', label: 'Account Creation' },
+  { href: '/admin/calendar', label: 'School Calendar' },
+  { href: '/admin/result-pins', label: 'Pins' },
+  { href: '/admin/parents', label: 'Parents' },
+  { href: '/admin/email-center', label: 'Email Center' },
+  { href: '/admin/signup-profiles', label: 'Sign Up Profiles' },
+  { href: '/admin/reception', label: 'Reception' },
   ...(showFinance ? [{ href: '/admin/scholarship', label: 'Scholarship' }] : []),
   { href: '/admin/id-cards', label: 'ID Cards' },
-  { href: '/admin/announcements', label: 'Announce' },
-  ...(showSettings ? [{ href: '/admin/settings', label: 'Settings' }] : []),
 ];
 ---
 <!doctype html>
