@@ -1,4 +1,3 @@
-
 import type { APIRoute } from 'astro';
 import { checkAuth } from '../../../../lib/auth';
 import { createServerSupabase } from '../../../../lib/supabase';
