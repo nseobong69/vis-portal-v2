@@ -112,17 +112,30 @@ export async function removeSubjectAssign(id: string): Promise<void> {
   await supabase.from('teacher_subjects').delete().eq('id', id);
 }
 
-/** Mirrors loadClassTeacherList(). */
+/** Mirrors loadClassTeacherList(). Manual join — avoids PostgREST FK ambiguity. */
 export async function fetchClassTeacherList(): Promise<ClassTeacherRow[]> {
   const supabase = createBrowserSupabase();
   const { data: tc, error } = await supabase
     .from('teacher_classes')
-    .select('id, profiles!teacher_classes_teacher_id_fkey(full_name), classes!teacher_classes_class_id_fkey(name, arm)');
-  if (error) console.error('[fetchClassTeacherList]', error);
-  return (tc ?? []).map((r: any) => ({
-    id: r.id,
-    teacher_name: r.profiles?.full_name ?? '—',
-    class_label: `${r.classes?.name ?? ''}${r.classes?.arm ? ' ' + r.classes.arm : ''}`,
+    .select('id, teacher_id, class_id');
+  if (error) { console.error('[fetchClassTeacherList] teacher_classes:', error); return []; }
+  if (!tc?.length) return [];
+
+  const teacherIds = [...new Set(tc.map((r) => r.teacher_id))];
+  const classIds   = [...new Set(tc.map((r) => r.class_id))];
+
+  const [{ data: profiles }, { data: classes }] = await Promise.all([
+    supabase.from('profiles').select('id, full_name').in('id', teacherIds),
+    supabase.from('classes').select('id, name, arm').in('id', classIds),
+  ]);
+
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name]));
+  const classMap   = Object.fromEntries((classes  ?? []).map((c) => [c.id, `${c.name}${c.arm ? ' ' + c.arm : ''}`]));
+
+  return tc.map((r) => ({
+    id:           r.id,
+    teacher_name: profileMap[r.teacher_id] ?? '—',
+    class_label:  classMap[r.class_id]     ?? '—',
   }));
 }
 
