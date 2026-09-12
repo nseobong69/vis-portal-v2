@@ -19,11 +19,12 @@ const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
       <label for="password" style="display:block; font-size: 13px; margin-bottom: 4px;">Password</label>
       <input id="password" name="password" type="password" required style="width:100%; padding:8px; box-sizing:border-box;" />
     </div>
-    <button type="submit" style="width:100%; padding:10px; background:#111; color:#fff; border:none; border-radius:4px;">
+    <button type="submit" style="width:100%; padding:10px; background:#111; color:#fff; border:none;">
       Log in
     </button>
     <p id="error" style="color:#b00; font-size: 13px; margin-top: 10px;"></p>
   </form>
+
   <script define:vars={{ next }}>
     const form = document.getElementById('login-form');
     const errorEl = document.getElementById('error');
@@ -43,6 +44,24 @@ const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
           errorEl.textContent = json.error || 'Login failed.';
           return;
         }
+
+        // NEW: attach the session to the browser-side Supabase client so
+        // subsequent createBrowserSupabase() calls (React islands) run as
+        // this authenticated user instead of anonymously. supabase-js
+        // persists this to localStorage by default, which createBrowserSupabase()
+        // will then auto-pick-up on every page load.
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const supabase = createClient(
+          import.meta.env.PUBLIC_SUPABASE_URL,
+          import.meta.env.PUBLIC_SUPABASE_ANON_KEY
+        );
+        if (json.session) {
+          await supabase.auth.setSession({
+            access_token: json.session.access_token,
+            refresh_token: json.session.refresh_token,
+          });
+        }
+
         // FIX: validate that next is a relative path to prevent open-redirect
         // attacks (e.g. ?next=https://evil.com). Also default to
         // /admin/dashboard instead of '/' so admins land somewhere useful.
