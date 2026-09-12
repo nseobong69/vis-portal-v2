@@ -1,22 +1,20 @@
 ---
 // Admin Portal — ID Cards
-// Cloudinary photo upload wired (sign-photo-upload.ts, same signature
-// pattern as the CBT proctoring uploads). QR/barcode: FIXED — the CDN
-// script-tag approach (QRCode.js/JsBarcode from cdnjs) was failing in
-// production ("Could not load QR/barcode libraries from cdnjs" —
-// cdnjs unreachable/blocked from this deployment). Now uses the
-// `qrcode` and `jsbarcode` npm packages as real bundled imports
-// instead. face-api.js face-matching against the photo is NOT
-// included — that's a much bigger lift than a card layout and stays a
-// follow-up.
+// FULL REBUILD. The previous version (single-student dropdown, no
+// class browsing, no staff tab, no card back, CDN QR/barcode) was a
+// thin stand-in for the old app's real module — confirmed by
+// comparing screenshots side by side with the live old app at
+// victoriousinternationalschools.com. Ported field-by-field from
+// renderIDCards()/_idcSelectClass()/_idcBuildFront()/_idcBuildBack()/
+// _idcPrintSingle()/_idcBulkPrint()/_idcGenerateBulkPDF()
+// (index.html ~L30634-31191, function name is renderIDCards — capital
+// IDS, which is why an earlier grep for "renderIdCards" missed it).
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import IdCardGenerator from '../../components/admin/IdCardGenerator';
+import IdCardsManager from '../../components/admin/IdCardsManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
 const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -25,19 +23,45 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('students')
-  .select('*')
-  .limit(50);
+const [{ data: classes }, { data: staff }, { data: ssRows }] = await Promise.all([
+  supabase.from('classes').select('id, name, level').order('name'),
+  // Same select as renderIDCards() (index.html ~L30630) — every
+  // non-student profile, with the exact fields the card back needs.
+  supabase.from('profiles')
+    .select('id, full_name, role, avatar_url, email, phone, employee_id, staff_id, emergency_contact, emergency_phone')
+    .or('role.neq.student,role.is.null')
+    .order('full_name'),
+  supabase.from('school_settings')
+    .select('school_name, motto, primary_color, logo_url, address, phone1, email, current_session, finance_signatory_stamp')
+    .eq('id', 1),
+]);
+
+const ss = ssRows?.[0] || {};
 ---
 <AdminLayout title="ID Cards" activePath="/admin/id-cards" role={auth.role}>
-  <Card title="ID Cards">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `students` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <IdCardGenerator client:load students={(rows ?? []) as any[]} />
-  </Card>
+  <div class="flex flex-col gap-4">
+    <div class="flex justify-between items-start flex-wrap gap-2">
+      <div>
+        <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">ID Cards</h1>
+        <p class="text-sm text-brand-brown-light">Generate world-class PVC identity cards for students &amp; staff</p>
+      </div>
+    </div>
+
+    <IdCardsManager
+      client:load
+      classes={(classes ?? []) as any}
+      staff={(staff ?? []) as any}
+      schoolSettings={{
+        school_name: ss.school_name,
+        motto: ss.motto,
+        primary_color: ss.primary_color,
+        logo_url: ss.logo_url,
+        address: ss.address,
+        phone1: ss.phone1,
+        email: ss.email,
+        current_session: ss.current_session,
+        finance_signatory_stamp: ss.finance_signatory_stamp,
+      }}
+    />
+  </div>
 </AdminLayout>
