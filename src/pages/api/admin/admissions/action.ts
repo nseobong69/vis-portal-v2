@@ -6,19 +6,18 @@ export const prerender = false;
 
 // Full port of approveAdm()/rejectAdm()/saveAdmPaymentConfirmation()/
 // _autoCreateAdmissionFeeInvoice()/saveAdmFeeSettings()/
-// saveAdmCBTSettings() (index.html ~15307-15381, ~21788-21990). The
-// previous version of this file only flipped `status` — this restores
-// the real business logic: approval is gated on payment confirmation,
-// creates the actual student record with a random class-arm assignment,
-// auto-generates the admission fee invoice, and keeps Finance & Fees in
-// sync via fee_payments/fee_receipts. Still NOT covered: the internal
-// "+ New Admission" intake form (buildAdmFormHTML() — shared with the
-// already-built public AdmissionWizard.tsx) and the 2-page PDF letter
-// (generateAdmissionPDF(), ~360 lines — separate follow-up).
+// saveAdmCBTSettings()/submitInternalAdm()/_buildAdmPayload()
+// (index.html ~15307-15381, ~21788-21990, ~23705-23767). The 'create'
+// action below is the internal "+ New Admission" intake form's submit
+// handler, added in this pass. Still NOT covered: the 2-page PDF
+// admission letter (generateAdmissionPDF(), ~360 lines — separate
+// follow-up) and the confirmation email submitInternalAdm() sends on
+// success (sendEmailDelivery() — same Email Center delivery-log system
+// as the rest of this app, not wired up here yet).
 const ADMIN_ROLES = ['super_admin', 'admin', 'proprietor'];
 
 interface Body {
-  action: 'approve' | 'reject' | 'confirmPayment' | 'delete' | 'saveFeeSettings' | 'saveCbtSettings';
+  action: 'approve' | 'reject' | 'confirmPayment' | 'delete' | 'saveFeeSettings' | 'saveCbtSettings' | 'create';
   id?: string;
   amountPaid?: number;
   paymentMethod?: string;
@@ -26,6 +25,7 @@ interface Body {
   feeConfigs?: Record<string, number>;
   feeSections?: Record<string, number>;
   cbtConfigs?: Record<string, { required: boolean; class_name?: string; exam_title?: string }>;
+  admission?: Record<string, unknown>;
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -274,6 +274,133 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }).eq('id', 1);
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }
+
+  if (body.action === 'create') {
+    // Ported from submitInternalAdm()/_buildAdmPayload(false)
+    // (index.html ~L23705-23767) — the internal "+ New Admission"
+    // intake form. Same admission_fee resolution priority as
+    // onAdmClassChange() (per-class override -> section fee ->
+    // default), same payment_status derivation, same official_name/
+    // confirmed_by stamping with the acting staff member.
+    const a = body.admission || {};
+    const fullName = String(a.full_name || '').trim();
+    const classApplied = String(a.class_applied || '').trim();
+    if (!fullName || !classApplied) {
+      return new Response(JSON.stringify({ error: 'Name and class are required.' }), { status: 400 });
+    }
+
+    const { data: ssRow } = await supabase
+      .from('school_settings')
+      .select('admission_fee_default, admission_fee_sections, admission_fee_configs')
+      .eq('id', 1).single();
+    const defFee = parseFloat(String(ssRow?.admission_fee_default)) || 0;
+    let secFees: Record<string, number> = {};
+    try { secFees = typeof ssRow?.admission_fee_sections === 'string' ? JSON.parse(ssRow.admission_fee_sections) : (ssRow?.admission_fee_sections || {}); } catch { /* default {} */ }
+
+    // Per-class fee configs (admission_fee_configs) — now fetched and used.
+    // Full 3-priority chain matching onAdmClassChange() in the old app:
+    //   1. exact per-class ID override (admission_fee_configs[class_id])
+    //   2. section fee (admission_fee_sections[section])
+    //   3. global default (admission_fee_default)
+    let perClassConfigs: Record<string, number> = {};
+    try { perClassConfigs = typeof ssRow?.admission_fee_configs === 'string' ? JSON.parse(ssRow.admission_fee_configs) : (ssRow?.admission_fee_configs || {}); } catch { /* default {} */ }
+
+    // Resolve the class_id for the applied class name so we can look it up in perClassConfigs
+    const { data: classRow } = await supabase.from('classes').select('id').ilike('name', classApplied.split(' ')[0] + '%').limit(10);
+    const matchedClassId = (classRow || []).find((c: any) => {
+      const label = (c.name + (c.arm ? ' ' + c.arm : '')).toLowerCase();
+      return label.includes(classApplied.toLowerCase().split(' ')[0].toLowerCase());
+    })?.id || null;
+
+    const clsLow = classApplied.toLowerCase();
+    let secKey: 'kindergarten' | 'nursery' | 'primary' | 'secondary' = 'secondary';
+    if (/kindergarten|kinder|k\.g|kg\b/.test(clsLow)) secKey = 'kindergarten';
+    else if (/nursery|nur/.test(clsLow)) secKey = 'nursery';
+    else if (/primary|pri|pry/.test(clsLow)) secKey = 'primary';
+
+    let fee = 0;
+    if (matchedClassId && perClassConfigs[matchedClassId] && parseFloat(String(perClassConfigs[matchedClassId])) > 0) {
+      fee = parseFloat(String(perClassConfigs[matchedClassId]));
+    } else {
+      const secFee = secFees[secKey] ? parseFloat(String(secFees[secKey])) : 0;
+      fee = secFee > 0 ? secFee : defFee;
+    }
+
+    const amtPaid = Number(a.amount_paid) || 0;
+    const paymentStatus = amtPaid >= fee && fee > 0 ? 'paid' : amtPaid > 0 ? 'partial' : 'unpaid';
+
+    const { data: actingProfile } = await supabase.from('profiles').select('full_name').eq('id', auth.userId).maybeSingle();
+    const actingName = actingProfile?.full_name || null;
+
+    const payload = {
+      full_name: fullName,
+      class_applied: classApplied,
+      class_admitted: String(a.class_admitted || '').trim() || classApplied,
+      cbt_number: a.aptitude_code || null,
+      aptitude_code: a.aptitude_code || null,
+      aptitude_score: a.aptitude_score != null && a.aptitude_score !== '' ? Number(a.aptitude_score) : null,
+      gender: a.gender || null,
+      date_of_birth: a.date_of_birth || null,
+      nationality: a.nationality || null,
+      state_of_origin: a.state_of_origin || null,
+      lga: a.lga || null,
+      village: a.village || null,
+      permanent_address: a.permanent_address || null,
+      residential_address: a.residential_address || null,
+      religion: a.religion || null,
+      denomination: a.denomination || null,
+      previous_school: a.previous_school || null,
+      previous_class: a.previous_class || null,
+      last_promoted_class: a.last_promoted_class || null,
+      parent_name: a.parent_name || null,
+      parent_relationship: a.parent_relationship || null,
+      parent_address: a.parent_address || null,
+      phone: a.phone || null,
+      email: a.email || null,
+      parents_married: a.parents_married === 'yes',
+      parents_together: a.parents_together === 'yes',
+      responsibility: a.responsibility || null,
+      lives_with: a.lives_with || null,
+      emergency_name: a.emergency_name || null,
+      emergency_phone: a.emergency_phone || null,
+      emergency_address: a.emergency_address || null,
+      emergency_relationship: a.emergency_relationship || null,
+      health_issues: a.health_issues || null,
+      disability: a.disability || null,
+      consent_discipline: !!a.consent_discipline,
+      consent_medical: !!a.consent_medical,
+      admission_fee: fee,
+      amount_paid: amtPaid,
+      payment_method: a.payment_method || null,
+      balance_due_date: a.balance_due_date || null,
+      payment_status: paymentStatus,
+      official_name: actingName,
+      confirmed_by: actingName,
+      status: 'pending',
+    };
+
+    const { data: inserted, error } = await supabase.from('admissions').insert(payload).select('*').single();
+    if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+
+    // Same best-effort admission-confirmation email as submitInternalAdm()
+    // (index.html ~L23770) — silently skipped on failure, same as the
+    // old app's empty catch.
+    if (inserted?.email && inserted?.parent_name) {
+      try {
+        const { data: schoolSettings } = await supabase.from('school_settings').select('school_name').eq('id', 1).single();
+        const schoolName = (schoolSettings as any)?.school_name || 'Victorious International Schools';
+        await supabase.from('email_logs').insert({
+          to_email: inserted.email,
+          to_name: inserted.parent_name,
+          subject: `Admission Application — ${inserted.full_name} | ${schoolName}`,
+          body_html: `Dear ${inserted.parent_name},<br><br>Your admission application for <strong>${inserted.full_name}</strong> into <strong>${inserted.class_applied}</strong> has been received and is currently being reviewed.<br><br>${schoolName}`,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        });
+      } catch { /* best-effort — same as old app's empty catch around sendEmailDelivery */ }
+    }
+    return new Response(JSON.stringify({ ok: true, admission: inserted }), { status: 200 });
   }
 
   return new Response(JSON.stringify({ error: 'Unknown action.' }), { status: 400 });
