@@ -1,14 +1,33 @@
 ---
-// Admin Portal — Admissions (Admin)
-// The public-facing admission wizard + CBT + Paystack flow is already real (AdmissionWizard.tsx, from the scaffold phase). This route is the admin-side review queue only, list view.
+// Replaces the earlier stub (bare 2-column table: Applicant/Status,
+// no name even shown correctly, no stats, no actions). Ported from
+// renderAdmissions() (index.html ~21566-21598) — full stats cards,
+// applicant table, and real Approve/Reject/Confirm Payment/Delete
+// actions (approveAdm() ports the FULL business logic: payment gate,
+// random class-arm assignment, student record creation, auto-invoice —
+// not just a status flip).
+//
+// NOT covered by this pass, each a separate larger sub-feature:
+//  - showInternalAdmForm() ("+ New Admission") — shares buildAdmFormHTML()
+//    with the already-built public AdmissionWizard.tsx; use the Public
+//    Form link meanwhile.
+//  - downloadAdmissionLetterPDF()/generateAdmissionPDF() — a ~360-line
+//    2-page PDF generator, separate follow-up.
+//
+// SCHEMA CAVEAT: admission_fee_default is confirmed against the real
+// school_settings table (already used successfully in settings.astro).
+// admission_fee_sections and admission_cbt_configs are NOT confirmed —
+// ported from the old app's field names but never checked against this
+// project's actual schema. Run:
+//   select column_name from information_schema.columns
+//   where table_schema='public' and table_name='school_settings';
+// before fully trusting the Admission Fees / Aptitude Test modals.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import AdmissionsManager from '../../components/admin/AdmissionsManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor']);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,28 +36,42 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('admissions')
-  .select('*')
-  .limit(25);
+const [{ data: admissions, error }, { data: classes }, { data: ss }] = await Promise.all([
+  supabase.from('admissions').select('*').order('created_at', { ascending: false }),
+  supabase.from('classes').select('id, name, arm').order('name'),
+  supabase.from('school_settings').select('admission_fee_default, admission_fee_sections, admission_cbt_configs').eq('id', 1).single(),
+]);
 
-const columns = [
-  { key: 'applicant_name', header: 'Applicant' },
-  { key: 'status', header: 'Status' }
-];
+function safeParseJSON(val: any, fallback: any) {
+  if (!val) return fallback;
+  if (typeof val !== 'string') return val;
+  try { return JSON.parse(val); } catch { return fallback; }
+}
+const initialFeeSections = safeParseJSON(ss?.admission_fee_sections, {});
+const initialCbtConfigs = safeParseJSON(ss?.admission_cbt_configs, {});
 ---
-<AdminLayout title="Admissions (Admin)" activePath="/admin/admissions" role={auth.role}>
-  <Card title="Admissions (Admin)">
+<AdminLayout title="Admissions" activePath="/admin/admissions" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Admissions</h1>
+      <p class="text-sm text-brand-brown-light">Manage admission applications.</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `admissions` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load admissions: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+
+    <AdmissionsManager
+      client:load
+      admissions={(admissions ?? []) as any}
+      classes={(classes ?? []) as any}
+      role={auth.role}
+      publicFormUrl="/admissions"
+      initialFeeDefault={ss?.admission_fee_default ?? 0}
+      initialFeeSections={initialFeeSections}
+      initialCbtConfigs={initialCbtConfigs}
     />
-  </Card>
+  </div>
 </AdminLayout>
