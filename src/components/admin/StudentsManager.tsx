@@ -36,10 +36,15 @@ interface Props {
   canTransfer: boolean;
   canMigrate: boolean;
   initialClassFilter?: string;
+  // ADDED: mirrors initialClassFilter's existing pattern. Wired from
+  // students.astro's ?search= query param so links like
+  // ScholarshipManager's Edit button (/admin/students?search={name})
+  // actually pre-filter instead of being silently ignored.
+  initialSearch?: string;
 }
 
-export default function StudentsManager({ students, classes, canAdd, canDelete, canTransfer, canMigrate, initialClassFilter }: Props) {
-  const [search, setSearch] = useState('');
+export default function StudentsManager({ students, classes, canAdd, canDelete, canTransfer, canMigrate, initialClassFilter, initialSearch }: Props) {
+  const [search, setSearch] = useState(initialSearch || '');
   const [classFilter, setClassFilter] = useState(initialClassFilter || '');
   const [modalStudent, setModalStudent] = useState<StudentRow | null | undefined>(undefined); // undefined = closed
   const [transferOpen, setTransferOpen] = useState(false);
