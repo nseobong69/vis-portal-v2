@@ -7,21 +7,12 @@
 // random class-arm assignment, student record creation, auto-invoice —
 // not just a status flip).
 //
-// NOT covered by this pass, each a separate larger sub-feature:
-//  - showInternalAdmForm() ("+ New Admission") — shares buildAdmFormHTML()
-//    with the already-built public AdmissionWizard.tsx; use the Public
-//    Form link meanwhile.
-//  - downloadAdmissionLetterPDF()/generateAdmissionPDF() — a ~360-line
-//    2-page PDF generator, separate follow-up.
-//
-// SCHEMA CAVEAT: admission_fee_default is confirmed against the real
-// school_settings table (already used successfully in settings.astro).
-// admission_fee_sections and admission_cbt_configs are NOT confirmed —
-// ported from the old app's field names but never checked against this
-// project's actual schema. Run:
-//   select column_name from information_schema.columns
-//   where table_schema='public' and table_name='school_settings';
-// before fully trusting the Admission Fees / Aptitude Test modals.
+// CHANGED in this pass:
+//   - admission_fee_configs also fetched and passed as initialFeeConfigs
+//     so InternalAdmissionModal can apply the 3-priority fee chain:
+//     per-class ID → section fee → global default (matching the old
+//     app's onAdmClassChange() exactly).
+//   - PDF and email are now wired — see InternalAdmissionModal.tsx.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import AdmissionsManager from '../../components/admin/AdmissionsManager';
 import { checkAuth } from '../../lib/auth';
@@ -39,7 +30,9 @@ const supabase = createServerSupabase(Astro.cookies);
 const [{ data: admissions, error }, { data: classes }, { data: ss }] = await Promise.all([
   supabase.from('admissions').select('*').order('created_at', { ascending: false }),
   supabase.from('classes').select('id, name, arm').order('name'),
-  supabase.from('school_settings').select('admission_fee_default, admission_fee_sections, admission_cbt_configs').eq('id', 1).single(),
+  supabase.from('school_settings')
+    .select('admission_fee_default, admission_fee_sections, admission_fee_configs, admission_cbt_configs')
+    .eq('id', 1).single(),
 ]);
 
 function safeParseJSON(val: any, fallback: any) {
@@ -48,7 +41,8 @@ function safeParseJSON(val: any, fallback: any) {
   try { return JSON.parse(val); } catch { return fallback; }
 }
 const initialFeeSections = safeParseJSON(ss?.admission_fee_sections, {});
-const initialCbtConfigs = safeParseJSON(ss?.admission_cbt_configs, {});
+const initialFeeConfigs  = safeParseJSON(ss?.admission_fee_configs,  {});
+const initialCbtConfigs  = safeParseJSON(ss?.admission_cbt_configs,  {});
 ---
 <AdminLayout title="Admissions" activePath="/admin/admissions" role={auth.role}>
   <div class="flex flex-col gap-4">
@@ -71,6 +65,7 @@ const initialCbtConfigs = safeParseJSON(ss?.admission_cbt_configs, {});
       publicFormUrl="/admissions"
       initialFeeDefault={ss?.admission_fee_default ?? 0}
       initialFeeSections={initialFeeSections}
+      initialFeeConfigs={initialFeeConfigs}
       initialCbtConfigs={initialCbtConfigs}
     />
   </div>
