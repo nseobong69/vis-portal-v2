@@ -1,0 +1,143 @@
+import { useState } from 'react';
+import Button from '../ui/Button';
+
+interface EmailLog {
+  id: string;
+  recipient: string | null;
+  subject: string | null;
+  status: 'sent' | 'pending' | 'failed';
+  created_at: string;
+}
+
+interface Props {
+  initialRows: EmailLog[];
+}
+
+function fmtDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return iso; }
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  sent: 'bg-success-700/10 text-success-700',
+  pending: 'bg-yellow-100 text-yellow-700',
+  failed: 'bg-danger-700/10 text-danger-700',
+};
+
+async function callAPI(payload: object) {
+  const res = await fetch('/api/admin/email/log-action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed.');
+  return data;
+}
+
+export default function EmailCenterManager({ initialRows }: Props) {
+  const [rows, setRows] = useState(initialRows);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function deleteRow(id: string) {
+    if (!confirm('Delete this log entry?')) return;
+    setBusy(id);
+    try {
+      await callAPI({ action: 'delete', id });
+      setRows((prev) => prev.filter((r) => r.id !== id));
+    } catch (e: any) {
+      alert(e.message);
+    } finally { setBusy(null); }
+  }
+
+  async function retryRow(id: string) {
+    setBusy(id);
+    try {
+      await callAPI({ action: 'retry', id });
+      setRows((prev) => prev.map((r) => r.id === id ? { ...r, status: 'pending' as const } : r));
+    } catch (e: any) {
+      alert(e.message);
+    } finally { setBusy(null); }
+  }
+
+  async function clearAll() {
+    if (!confirm('Clear all log entries?')) return;
+    try {
+      await callAPI({ action: 'clear_all' });
+      setRows([]);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-brand-cream-dark overflow-hidden">
+      <div className="flex justify-between items-center px-5 py-4 border-b border-brand-cream-dark">
+        <div className="font-heading font-bold text-brand-brown-dark">Email Delivery Log</div>
+        <button
+          onClick={clearAll}
+          className="text-xs text-danger-700 border border-danger-700 rounded-md px-3 py-1.5 hover:bg-danger-700/10"
+        >
+          Clear All
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-brand-cream text-xs text-brand-brown-light uppercase">
+              <th className="text-left px-4 py-3">Recipient</th>
+              <th className="text-left px-4 py-3">Subject</th>
+              <th className="text-left px-4 py-3">Status</th>
+              <th className="text-left px-4 py-3">Date</th>
+              <th className="text-left px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="text-center py-10 text-brand-brown-light">
+                  No emails logged yet.
+                </td>
+              </tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-brand-cream-dark hover:bg-brand-cream/40">
+                <td className="px-4 py-3 text-brand-brown-dark">{r.recipient || '—'}</td>
+                <td className="px-4 py-3 text-brand-brown-light max-w-xs truncate">{r.subject || '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded ${STATUS_STYLE[r.status] || ''}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-brand-brown-light whitespace-nowrap">{fmtDate(r.created_at)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-2">
+                    {r.status === 'failed' && (
+                      <button
+                        onClick={() => retryRow(r.id)}
+                        disabled={busy === r.id}
+                        className="text-brand-brown-light hover:text-brand-brown"
+                        title="Retry"
+                      >
+                        ↺
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteRow(r.id)}
+                      disabled={busy === r.id}
+                      className="text-danger-700 hover:text-danger-700/70"
+                      title="Delete"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
