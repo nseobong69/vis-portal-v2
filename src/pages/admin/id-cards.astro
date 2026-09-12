@@ -1,13 +1,14 @@
 ---
 // Admin Portal — ID Cards
-// Cloudinary photo upload now wired (sign-photo-upload.ts, same
-// signature pattern as the CBT proctoring uploads) and QR/barcode now
-// rendered client-side via QRCode.js/JsBarcode from cdnjs (no npm
-// install available in this environment, so CDN — same tradeoff as
-// every "not ported yet" line elsewhere used to explain, now resolved
-// for this one route). face-api.js face-matching against the photo is
-// NOT included — that's a much bigger lift than a card layout and
-// stays a follow-up.
+// Cloudinary photo upload wired (sign-photo-upload.ts, same signature
+// pattern as the CBT proctoring uploads). QR/barcode: FIXED — the CDN
+// script-tag approach (QRCode.js/JsBarcode from cdnjs) was failing in
+// production ("Could not load QR/barcode libraries from cdnjs" —
+// cdnjs unreachable/blocked from this deployment). Now uses the
+// `qrcode` and `jsbarcode` npm packages as real bundled imports
+// instead. face-api.js face-matching against the photo is NOT
+// included — that's a much bigger lift than a card layout and stays a
+// follow-up.
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Card from '../../components/ui/Card';
 import IdCardGenerator from '../../components/admin/IdCardGenerator';
