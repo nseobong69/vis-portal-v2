@@ -81,6 +81,7 @@ const canMigrate = ['super_admin', 'admin'].includes(auth.role);
       canTransfer={canTransfer}
       canMigrate={canMigrate}
       initialClassFilter={Astro.url.searchParams.get('class') || ''}
+      initialSearch={Astro.url.searchParams.get('search') || ''}
     />
   </div>
 </AdminLayout>
