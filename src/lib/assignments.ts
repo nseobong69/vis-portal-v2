@@ -112,22 +112,24 @@ export async function removeSubjectAssign(id: string): Promise<void> {
   await supabase.from('teacher_subjects').delete().eq('id', id);
 }
 
-/** Mirrors loadClassTeacherList(). Manual join — avoids PostgREST FK ambiguity. */
+/** Mirrors loadClassTeacherList(). Manual join — avoids PostgREST FK ambiguity, and throws on error so callers can surface it. */
 export async function fetchClassTeacherList(): Promise<ClassTeacherRow[]> {
   const supabase = createBrowserSupabase();
   const { data: tc, error } = await supabase
     .from('teacher_classes')
     .select('id, teacher_id, class_id');
-  if (error) { console.error('[fetchClassTeacherList] teacher_classes:', error); return []; }
+  if (error) throw new Error(`teacher_classes: ${error.message}`);
   if (!tc?.length) return [];
 
   const teacherIds = [...new Set(tc.map((r) => r.teacher_id))];
   const classIds   = [...new Set(tc.map((r) => r.class_id))];
 
-  const [{ data: profiles }, { data: classes }] = await Promise.all([
+  const [{ data: profiles, error: pErr }, { data: classes, error: cErr }] = await Promise.all([
     supabase.from('profiles').select('id, full_name').in('id', teacherIds),
     supabase.from('classes').select('id, name, arm').in('id', classIds),
   ]);
+  if (pErr) throw new Error(`profiles: ${pErr.message}`);
+  if (cErr) throw new Error(`classes: ${cErr.message}`);
 
   const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name]));
   const classMap   = Object.fromEntries((classes  ?? []).map((c) => [c.id, `${c.name}${c.arm ? ' ' + c.arm : ''}`]));
