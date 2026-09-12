@@ -115,7 +115,10 @@ export async function removeSubjectAssign(id: string): Promise<void> {
 /** Mirrors loadClassTeacherList(). */
 export async function fetchClassTeacherList(): Promise<ClassTeacherRow[]> {
   const supabase = createBrowserSupabase();
-  const { data: tc } = await supabase.from('teacher_classes').select('id, profiles(full_name), classes(name, arm)');
+  const { data: tc, error } = await supabase
+    .from('teacher_classes')
+    .select('id, profiles!teacher_classes_teacher_id_fkey(full_name), classes!teacher_classes_class_id_fkey(name, arm)');
+  if (error) console.error('[fetchClassTeacherList]', error);
   return (tc ?? []).map((r: any) => ({
     id: r.id,
     teacher_name: r.profiles?.full_name ?? '—',
@@ -148,4 +151,3 @@ export async function removeClassTeacherAssign(id: string): Promise<void> {
   const supabase = createBrowserSupabase();
   await supabase.from('teacher_classes').delete().eq('id', id);
 }
-
