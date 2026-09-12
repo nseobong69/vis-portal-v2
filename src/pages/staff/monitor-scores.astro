@@ -1,1 +1,40 @@
+---
+// Real, server-served route at /staff/monitor-scores — direct URL loads
+// hit this file's actual server-rendered HTML (Astro output: 'server'),
+// no client router involved.
+import StaffLayout from '../../layouts/StaffLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import MonitorScoresIsland from '../../components/staff/MonitorScoresIsland';
 
+// ── Step 1: server-side auth + role check, BEFORE any data is fetched ──
+// Roles allowed, per the Feature Checklist (row 11: Monitor Scores) —
+// matches the old app's renderMonitorScores() comment: super_admin,
+// admin, proprietor (all classes) · principal (secondary only) ·
+// head_teacher (kindergarten/nursery/primary only). teacher and
+// subject_teacher are NOT included — they only get Results (Enter
+// Scores), not this oversight view.
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+]);
+
+if (auth.status === 'unauthenticated') {
+  // Real server-side redirect. Nothing below this fires first.
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  // Real 403, not a silent client-side redirect.
+  return Astro.redirect('/403');
+}
+---
+<StaffLayout title="Monitor Scores">
+  <p class="text-sm text-brand-brown-light mb-4">
+    See which classes have scores entered for a session, term &amp; subject. Signed in as role:
+    <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+  </p>
+
+  <!--
+    client:load — filters + summary/detail tables all need to be
+    interactive from first paint, same reasoning as ResultsSheetIsland.
+  -->
+  <MonitorScoresIsland client:load role={auth.role} userId={auth.userId} />
+</StaffLayout>
