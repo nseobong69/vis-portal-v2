@@ -36,5 +36,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     maxAge: data.session.expires_in,
   });
 
-  return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  // NEW: hand the session back to the browser too, so client-side Supabase
+  // calls (React islands using createBrowserSupabase) can be authenticated
+  // via supabase.auth.setSession() instead of running anonymously.
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      },
+    }),
+    { status: 200 }
+  );
 };
