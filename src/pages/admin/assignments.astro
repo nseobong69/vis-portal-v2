@@ -1,13 +1,24 @@
 ---
-// Admin Portal — Assignments
-// Create/grade flows not ported — list view only.
+// Real, server-served route at /admin/assignments — direct URL loads hit
+// this file's actual server-rendered HTML (Astro output: 'server'), no
+// client router involved.
+//
+// REPLACES the previous version of this file, which incorrectly queried
+// `academic_assignments` (homework/coursework — Feature Checklist row 15,
+// Academics) under the "Assignments" label. The correct feature for this
+// route is Feature Checklist row 9: "Assign teachers to classes and
+// subjects" — ported from the old app's renderAssignments().
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
 import { checkAuth } from '../../lib/auth';
-import { createServerSupabase } from '../../lib/supabase';
+import TeacherAssignmentsIsland from '../../components/admin/TeacherAssignmentsIsland';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+// Roles allowed, per the Feature Checklist (row 9: Assignments) — matches
+// the old app: super_admin, admin, proprietor, head_teacher, principal.
+// teacher/subject_teacher are NOT included — this is an admin-tier tool,
+// not something a teacher assigns to themselves.
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+]);
 
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
@@ -15,31 +26,14 @@ if (auth.status === 'unauthenticated') {
 if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
-
-const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('academic_assignments')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'title', header: 'Title' },
-  { key: 'class_id', header: 'Class' },
-  { key: 'due_date', header: 'Due' }
-];
 ---
 <AdminLayout title="Assignments" activePath="/admin/assignments" role={auth.role}>
-  <Card title="Assignments">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `academic_assignments` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+  <p class="text-sm text-brand-brown-light mb-4">Assign teachers to classes and subjects.</p>
+
+  <!--
+    client:load — class/teacher selects, the subject-teacher panel, and
+    the class-teacher panel all need to be interactive from first paint,
+    same reasoning as ResultsSheetIsland / MonitorScoresIsland.
+  -->
+  <TeacherAssignmentsIsland client:load />
 </AdminLayout>
