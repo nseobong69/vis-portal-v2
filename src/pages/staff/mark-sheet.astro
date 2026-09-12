@@ -2,6 +2,7 @@
 // Real, served route at /staff/mark-sheet.
 import StaffLayout from '../../layouts/StaffLayout.astro';
 import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
 import MarkSheetIsland from '../../components/staff/MarkSheetIsland';
 
 // The old app's renderMarkSheet() lets a subject_teacher call the
@@ -23,14 +24,18 @@ if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
 
-// TODO(Phase 1 real session): port SCHOOL_SETTINGS.school_name — see
-// the same TODO in attendance-report.astro / score-sheet.astro.
-const schoolName = 'Victorious International Schools';
+// Real school_name + logo_url from school_settings (id=1) — same table/
+// row School Settings reads/writes. Previously hardcoded here; the logo
+// was requested directly and school_name being a live value rather than
+// a literal string is the same fix applied for the same reason.
+const supabase = createServerSupabase(Astro.cookies);
+const { data: ss } = await supabase.from('school_settings').select('school_name, logo_url').eq('id', 1).single();
+const schoolName = ss?.school_name || 'School';
 ---
 <StaffLayout title="Mark Sheet">
   <p class="text-sm text-brand-brown-light mb-4">
     Generate a class-wide mark sheet PDF. Signed in as role:
     <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
   </p>
-  <MarkSheetIsland client:load role={auth.role} userId={auth.userId} schoolName={schoolName} />
+  <MarkSheetIsland client:load role={auth.role} userId={auth.userId} schoolName={schoolName} logoUrl={ss?.logo_url || ''} />
 </StaffLayout>
