@@ -1,14 +1,20 @@
 ---
 // Admin Portal — Result PINs
-// verify-result-pin-v2 Edge Function integration and pin_viewer-role checking flow not ported here — list only.
+// FULL REBUILD (all three tabs). Previous version queried
+// result_pins_v2 correctly but displayed the raw student_id UUID
+// instead of the student's name, had no class/term/session context
+// (result_pins_v2 is keyed on all three), and was missing the
+// Aptitude Codes / CBT Access Codes tabs entirely. Ported from
+// renderResultPins()/renderResultPinsTab()/loadRPStudents()/
+// renderAptitudeCodesTab()/renderCBTAccessCodesTab()
+// (index.html ~L24122-24620).
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import ResultPinsManager from '../../components/admin/ResultPinsManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
+// Same canAccessResultPins() role gate as the old app.
 const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,29 +23,40 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('result_pins_v2')
-  .select('*')
-  .limit(25);
 
-const columns = [
-  { key: 'pin', header: 'PIN' },
-  { key: 'student_id', header: 'Student' },
-  { key: 'used', header: 'Used' }
-];
+// Same role-scoped class list as renderResultPinsTab() (index.html
+// ~L24291-24294).
+let classesQuery = supabase.from('classes').select('id, name, arm, level').order('name');
+if (auth.role === 'head_teacher') {
+  classesQuery = classesQuery.in('level', ['kindergarten', 'nursery', 'primary']);
+} else if (auth.role === 'principal') {
+  classesQuery = classesQuery.eq('level', 'secondary');
+}
+const { data: classes } = await classesQuery;
+
+const { data: ssRows } = await supabase.from('school_settings').select('school_name, motto, finance_signatory_name, finance_signatory_role').eq('id', 1);
+const ss = ssRows?.[0] || {};
+
+// Data for the Aptitude Codes and CBT Access Codes tabs — same queries
+// as renderAptitudeCodesTab()/renderCBTAccessCodesTab() (index.html
+// ~L24151-24165, ~24487-24491).
+const { data: aptitudeExams } = await supabase.from('cbt_exams').select('id, title, class_id').eq('exam_type', 'aptitude').order('created_at', { ascending: false });
+const { data: aptitudeCodes } = await supabase.from('aptitude_codes').select('*').order('created_at', { ascending: false });
+const { data: cbtExams } = await supabase.from('cbt_exams').select('id, title, class_name, subject_name, access_code, status, duration_minutes').order('created_at', { ascending: false });
 ---
-<AdminLayout title="Result PINs" activePath="/admin/result-pins" role={auth.role}>
-  <Card title="Result PINs">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `result_pins_v2` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+<AdminLayout title="Pins" activePath="/admin/result-pins" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Pins</h1>
+      <p class="text-sm text-brand-brown-light">Manage Result PINs and Aptitude Codes</p>
+    </div>
+    <ResultPinsManager
+      client:load
+      classes={(classes ?? []) as any}
+      schoolSettings={ss}
+      aptitudeExams={(aptitudeExams ?? []) as any}
+      aptitudeCodes={(aptitudeCodes ?? []) as any}
+      cbtExams={(cbtExams ?? []) as any}
     />
-  </Card>
+  </div>
 </AdminLayout>
