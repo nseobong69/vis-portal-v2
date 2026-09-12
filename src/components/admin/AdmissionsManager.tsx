@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import InternalAdmissionModal from './InternalAdmissionModal';
 
 interface Admission {
   id: string;
@@ -288,10 +289,10 @@ function CbtSettingsModal({ classes, initialConfigs, onClose, onSaved }: { class
 }
 
 export default function AdmissionsManager({
-  admissions, classes, role, publicFormUrl, initialFeeDefault, initialFeeSections, initialCbtConfigs,
+  admissions, classes, role, publicFormUrl, initialFeeDefault, initialFeeSections, initialFeeConfigs, initialCbtConfigs,
 }: {
   admissions: Admission[]; classes: ClassOption[]; role: string; publicFormUrl: string;
-  initialFeeDefault: number; initialFeeSections: Record<string, number>; initialCbtConfigs: Record<string, any>;
+  initialFeeDefault: number; initialFeeSections: Record<string, number>; initialFeeConfigs: Record<string, number>; initialCbtConfigs: Record<string, any>;
 }) {
   const [list, setList] = useState(admissions);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -300,6 +301,7 @@ export default function AdmissionsManager({
   const [viewingFor, setViewingFor] = useState<Admission | null>(null);
   const [feeModalOpen, setFeeModalOpen] = useState(false);
   const [cbtModalOpen, setCbtModalOpen] = useState(false);
+  const [newAdmOpen, setNewAdmOpen] = useState(false);
 
   const incomplete = list.filter(isIncomplete);
   const stats = {
@@ -334,8 +336,7 @@ export default function AdmissionsManager({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2">
         <a href={publicFormUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold px-3 py-2 rounded-md border border-brand-cream-dark hover:bg-brand-cream">🔗 Public Form</a>
-        {/* NOT built — see admissions.astro header comment: shares buildAdmFormHTML() with the already-built public AdmissionWizard.tsx */}
-        <button disabled className="text-sm font-semibold px-3 py-2 rounded-md bg-brand-cream text-brand-brown-light cursor-not-allowed" title="Not built yet — use the Public Form link for now">+ New Admission</button>
+        <button onClick={() => setNewAdmOpen(true)} className="text-sm font-semibold px-3 py-2 rounded-md bg-brand-brown-dark text-white hover:brightness-110">+ New Admission</button>
         {role === 'super_admin' && (
           <button onClick={() => setFeeModalOpen(true)} className="text-sm font-semibold px-3 py-2 rounded-md border border-brand-cream-dark hover:bg-brand-cream">💳 Admission Fees</button>
         )}
@@ -415,9 +416,6 @@ export default function AdmissionsManager({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-brand-brown-light">
-        Not built in this pass: an internal "+ New Admission" intake form (use the Public Form link meanwhile) and the PDF admission letter — both flagged in code comments, not silently dropped.
-      </p>
 
       {payingFor && (
         <ConfirmPaymentModal
@@ -444,6 +442,16 @@ export default function AdmissionsManager({
           initialConfigs={initialCbtConfigs}
           onClose={() => setCbtModalOpen(false)}
           onSaved={() => setCbtModalOpen(false)}
+        />
+      )}
+      {newAdmOpen && (
+        <InternalAdmissionModal
+          classes={classes}
+          feeDefault={initialFeeDefault}
+          feeSections={initialFeeSections}
+          feeConfigs={initialFeeConfigs}
+          onClose={() => setNewAdmOpen(false)}
+          onCreated={() => window.location.reload()}
         />
       )}
     </div>
