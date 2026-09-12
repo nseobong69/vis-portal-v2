@@ -9,13 +9,76 @@ import { fetchMyClasses, type ClassOption } from '../../lib/results';
 const TERMS = ['1st Term', '2nd Term', '3rd Term'];
 const SESSIONS = ['2024/2025', '2025/2026', '2026/2027', '2027/2028'];
 
+// Shortens subject names for the rotated column headers so wider subject
+// counts still fit comfortably on one A4 page (requested directly — the
+// full names were making every score column unnecessarily wide). Known
+// subjects get a proper abbreviation; anything not in the map falls back
+// to a generic word-initialism so a newly-added subject never renders
+// blank.
+const SUBJECT_ABBR: Record<string, string> = {
+  'english language': 'Eng. Lang.',
+  mathematics: 'Maths',
+  'intermediate science': 'Inter. Sci.',
+  'basic science': 'Basic Sci.',
+  'basic technology': 'Basic Tech.',
+  'social studies': 'Soc. Studies',
+  'social and citizenship studies': 'Soc. & Cit. St.',
+  'civic education': 'Civic Ed.',
+  'christian religious studies': 'C.R.S.',
+  'christian religious knowledge': 'C.R.K.',
+  'physical and health education': 'P.H.E.',
+  'physical education': 'Phy. Ed.',
+  'nigerian history': 'Nig. History',
+  history: 'History',
+  'business studies': 'Bus. Studies',
+  'digital technologies': 'Digital Tech.',
+  'information technology': 'I.T.',
+  'computer studies': 'Comp. Studies',
+  'home economics': 'Home Econs.',
+  agriculture: 'Agric.',
+  'agricultural science': 'Agric. Sci.',
+  'livestock farming': 'Livestock Fm.',
+  'cultural and creative arts': 'C.C.A.',
+  'creative arts': 'Creative Arts',
+  'french language': 'French',
+  'quantitative reasoning': 'Quant. Reas.',
+  'verbal reasoning': 'Verbal Reas.',
+  'phonics/handwriting': 'Phonics/H.W.',
+  handwriting: 'Handwriting',
+  vocabulary: 'Vocabulary',
+  'further mathematics': 'Further Maths',
+  physics: 'Physics',
+  chemistry: 'Chemistry',
+  biology: 'Biology',
+  economics: 'Economics',
+  government: 'Government',
+  literature: 'Literature',
+  'literature in english': 'Lit-in-Eng.',
+  geography: 'Geography',
+  'fine art': 'Fine Art',
+  'fine arts': 'Fine Arts',
+  music: 'Music',
+};
+function abbreviateSubject(name: string): string {
+  const key = (name || '').trim().toLowerCase();
+  if (SUBJECT_ABBR[key]) return SUBJECT_ABBR[key];
+  if (name.length <= 12) return name; // already short enough
+  // Generic fallback: abbreviate every word except the last to its first
+  // 4 letters + '.', so "Intermediate Science" → "Inter. Science" even
+  // for subjects not in the map above.
+  const words = name.trim().split(/\s+/);
+  if (words.length === 1) return name.length > 10 ? name.slice(0, 9) + '.' : name;
+  return words.map((w, i) => (i === words.length - 1 ? w : w.length > 4 ? w.slice(0, 4) + '.' : w)).join(' ');
+}
+
 interface Props {
   role: string;
   userId: string;
   schoolName: string;
+  logoUrl?: string;
 }
 
-export default function MarkSheet({ role, userId, schoolName }: Props) {
+export default function MarkSheet({ role, userId, schoolName, logoUrl }: Props) {
   const toast = useToast();
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [teacherName, setTeacherName] = useState('—');
@@ -93,11 +156,11 @@ export default function MarkSheet({ role, userId, schoolName }: Props) {
     const totalCols = 2 + subjects.length + columns.length;
     const tableW = sz.narrowW + sz.nameW + subjects.length * sz.scoreW + columns.reduce((a, c) => a + c.w, 0);
     const colGroup = `<colgroup><col style="width:${sz.narrowW}px"><col style="width:${sz.nameW}px">${subjects.map(() => `<col style="width:${sz.scoreW}px">`).join('')}${columns.map((c) => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
-    const maxSubjLen = subjects.reduce((m, s) => Math.max(m, (s || '').length), 4);
+    const maxSubjLen = subjects.reduce((m, s) => Math.max(m, abbreviateSubject(s).length), 4);
     const hdrH = Math.max(sz.hdrH, Math.min(140, Math.ceil(maxSubjLen * sz.thFs * 0.57) + 14));
     const vCell = (label: string, fs?: number) => `<div style="height:${hdrH}px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><span style="display:inline-block;transform:rotate(-90deg);white-space:nowrap;font-size:${fs || sz.thFs}px;line-height:1;font-weight:700;">${label}</span></div>`;
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const subjectHeaders = subjects.map((s) => `<th style="${thS}">${vCell(esc(s), sz.thFs - 0.5)}</th>`).join('');
+    const subjectHeaders = subjects.map((s) => `<th style="${thS}" title="${esc(s)}">${vCell(esc(abbreviateSubject(s)), sz.thFs - 0.5)}</th>`).join('');
     const trailHeaders = columns.map((c) => `<th style="${thS}">${vCell(c.label.replace(/<br\s*\/?>/gi, ' '), sz.thFs - 0.5)}</th>`).join('');
     const bodyRows = rows
       .map((s, i) => {
@@ -124,10 +187,13 @@ export default function MarkSheet({ role, userId, schoolName }: Props) {
       ${colGroup}
       <thead>
         <tr><td colspan="${totalCols}" style="padding:8px 14px;background:${BR};color:#fff;border:none;">
-          <div style="text-align:center;">
-            <div style="font-family:serif;font-size:${sz.thFs + 7}px;font-weight:800;letter-spacing:.3px;">${esc(schoolName)}</div>
-            <div style="font-size:${sz.thFs}px;opacity:.85;font-style:italic;">Wisdom, Knowledge and Success</div>
-            <div style="font-size:${sz.thFs - 0.5}px;opacity:.75;">Odukpani LGA, Cross River State, Nigeria</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;position:relative;">
+            ${logoUrl ? `<img src="${logoUrl}" crossorigin="anonymous" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);height:${sz.hdrH ? Math.min(40, sz.thFs * 3.6) : 34}px;width:auto;object-fit:contain;" />` : ''}
+            <div style="text-align:center;">
+              <div style="font-family:serif;font-size:${sz.thFs + 7}px;font-weight:800;letter-spacing:.3px;">${esc(schoolName)}</div>
+              <div style="font-size:${sz.thFs}px;opacity:.85;font-style:italic;">Wisdom, Knowledge and Success</div>
+              <div style="font-size:${sz.thFs - 0.5}px;opacity:.75;">Odukpani LGA, Cross River State, Nigeria</div>
+            </div>
           </div>
         </td></tr>
         <tr><td colspan="${totalCols}" style="padding:5px 10px;text-align:center;font-size:${sz.thFs + 2}px;font-weight:700;color:${BR};background:#F8F1E3;border:2px solid ${BR};">MARK SHEET — ${classLabel.toUpperCase()} — ${term.toUpperCase()}, ${session}</td></tr>
@@ -257,7 +323,7 @@ export default function MarkSheet({ role, userId, schoolName }: Props) {
                   <th className="border border-brand-cream-dark px-2 py-1">#</th>
                   <th className="border border-brand-cream-dark px-2 py-1 text-left">Student Name</th>
                   {data.subjects.map((s) => (
-                    <th key={s} className="border border-brand-cream-dark px-2 py-1 whitespace-nowrap">{s}</th>
+                    <th key={s} title={s} className="border border-brand-cream-dark px-2 py-1 whitespace-nowrap">{abbreviateSubject(s)}</th>
                   ))}
                   <th className="border border-brand-cream-dark px-2 py-1">Total Obt.</th>
                   <th className="border border-brand-cream-dark px-2 py-1">Total Poss.</th>

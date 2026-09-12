@@ -5,6 +5,7 @@ interface Props {
   role: string;
   userId: string;
   schoolName: string;
+  logoUrl?: string;
 }
 
 export default function MarkSheetIsland(props: Props) {
