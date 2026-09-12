@@ -426,3 +426,104 @@ export async function applyResultBlocks(
   if (error) return { ok: false, count: 0, error: error.message };
   return { ok: true, count: records.length };
 }
+
+// ── Monitor Scores (renderMonitorScores/loadMonitorScores — cross-class,
+// read-only oversight view). Visible to: super_admin, admin, proprietor
+// (all classes) · principal (secondary only) · head_teacher (kindergarten/
+// nursery/primary only) — class scope is enforced by fetchMyClasses(),
+// same as Results. NOT visible to teacher/subject_teacher — matches the
+// old app's role comment on renderMonitorScores().
+
+export interface MonitorScoreRow {
+  student_name: string;
+  class_name: string;
+  subject_name: string;
+  ca_score: number | null;
+  exam_score: number | null;
+  total: number | null;
+  grade: string | null;
+  is_absent: boolean | null;
+}
+
+export interface MonitorSummaryRow {
+  cname: string;
+  subj: string;
+  total: number;
+  entered: number;
+}
+
+/**
+ * Mirrors loadMonitorScores(): fetches results.* directly (student_name/
+ * subject_name/class_name are plain text columns on the row already —
+ * no join needed), groups by class+subject for the summary table, and
+ * returns the raw score rows for the detail table.
+ */
+export async function fetchMonitorScores(
+  classIds: string[],
+  term: string,
+  session: string,
+  subjectName: string, // '' means all subjects
+  classesInScope: ClassOption[]
+): Promise<{
+  summaryRows: MonitorSummaryRow[];
+  detailRows: MonitorScoreRow[];
+  totalEntered: number;
+  classesWithData: number;
+}> {
+  const supabase = createBrowserSupabase();
+
+  if (!classIds.length) {
+    return { summaryRows: [], detailRows: [], totalEntered: 0, classesWithData: 0 };
+  }
+
+  let query = supabase.from('results').select('*').in('class_id', classIds).eq('term', term).eq('session', session);
+  if (subjectName) query = query.eq('subject_name', subjectName);
+
+  const [{ data: scores }, { data: students }] = await Promise.all([
+    query,
+    supabase.from('students').select('id, class_id').in('class_id', classIds),
+  ]);
+
+  const scoreRows = (scores ?? []) as (MonitorScoreRow & { class_id: string })[];
+
+  const stuCountByClass: Record<string, number> = {};
+  (students ?? []).forEach((s: { class_id: string }) => {
+    stuCountByClass[s.class_id] = (stuCountByClass[s.class_id] ?? 0) + 1;
+  });
+
+  // group by class, then subject within class — matches old app's byClassSubj,
+  // so "entered" per subject isn't inflated when "All Subjects" is selected.
+  const byClassSubj: Record<string, typeof scoreRows> = {};
+  scoreRows.forEach((r) => {
+    const k = r.class_id + '|' + (r.subject_name || '—');
+    (byClassSubj[k] = byClassSubj[k] ?? []).push(r);
+  });
+
+  const summaryRows: MonitorSummaryRow[] = [];
+  classesInScope.forEach((c) => {
+    const total = stuCountByClass[c.id] ?? 0;
+    const cname = `${c.name ?? ''}${c.arm ? ' ' + c.arm : ''}`.trim();
+    const subjNames = subjectName
+      ? [subjectName]
+      : [...new Set(scoreRows.filter((r) => r.class_id === c.id).map((r) => r.subject_name))];
+
+    if (subjNames.length === 0) {
+      // Nothing entered for this class & no specific class filter — skip,
+      // same as the old app (unless caller narrowed to one class already,
+      // which the page layer handles by passing a single-item classIds).
+      if (classIds.length > 1) return;
+      summaryRows.push({ cname, subj: subjectName || '—', total, entered: 0 });
+      return;
+    }
+
+    subjNames.forEach((sn) => {
+      const entered = (byClassSubj[c.id + '|' + sn] ?? []).length;
+      summaryRows.push({ cname, subj: sn, total, entered });
+    });
+  });
+
+  const totalEntered = scoreRows.length;
+  const classesWithData = new Set(scoreRows.map((r) => r.class_id)).size;
+
+  return { summaryRows, detailRows: scoreRows, totalEntered, classesWithData };
+}
