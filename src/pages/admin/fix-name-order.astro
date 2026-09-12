@@ -1,14 +1,18 @@
 ---
-// Admin Portal — Fix Name Order
-// The old app's Fix Name Order bulk-rename tool is not ported — this proves the route/auth pattern against the same students table only.
+// Replaces the earlier stub (a flat, non-interactive list of "Current
+// Name" values — no class picker, no way to actually do anything).
+// Ported from renderFixNameOrder()/_fnoRenderStudentsTab()/
+// _fnoRenderStaffTab() (index.html ~8009-8196): Students (class by
+// class) and Staff tabs, per-row Surname/First-name word-position
+// dropdowns with a live "After Reorder" preview, a pattern-by-position
+// bulk-apply box for rows sharing the same wrong order, and a
+// confirm-before-write modal since this cannot be auto-undone.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import FixNameOrderIsland from '../../components/admin/FixNameOrderIsland';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor']);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,27 +21,21 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('students')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'full_name', header: 'Current Name' }
-];
+const { data: classes, error } = await supabase.from('classes').select('id, name, arm').order('name');
 ---
 <AdminLayout title="Fix Name Order" activePath="/admin/fix-name-order" role={auth.role}>
-  <Card title="Fix Name Order">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Fix Name Order</h1>
+      <p class="text-sm text-brand-brown-light">Bulk-swap first/last name order — for names entered the wrong way round.</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `students` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load classes: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+
+    <FixNameOrderIsland client:load classes={(classes ?? []) as any} />
+  </div>
 </AdminLayout>
