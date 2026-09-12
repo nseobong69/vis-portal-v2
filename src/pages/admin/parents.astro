@@ -1,14 +1,11 @@
 ---
-// Admin Portal — Parents
-// parent_child_links management UI not ported — parent list only.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import ParentsIsland from '../../components/admin/ParentsIsland';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const ALLOWED_ROLES = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal'];
+const auth = await checkAuth(Astro.cookies, ALLOWED_ROLES);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,27 +14,19 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('parents')
-  .select('*')
-  .limit(25);
 
-const columns = [
-  { key: 'full_name', header: 'Name' }
-];
+const [{ data: parents }, { data: students }] = await Promise.all([
+  supabase.from('parents').select('*').order('full_name'),
+  supabase.from('students').select('id, full_name, class_name').order('full_name'),
+]);
+
+const isSuperAdmin = ['super_admin', 'admin'].includes(auth.role);
 ---
 <AdminLayout title="Parents" activePath="/admin/parents" role={auth.role}>
-  <Card title="Parents">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `parents` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+  <ParentsIsland
+    client:load
+    initialParents={(parents || []) as any}
+    students={(students || []) as any}
+    isSuperAdmin={isSuperAdmin}
+  />
 </AdminLayout>
