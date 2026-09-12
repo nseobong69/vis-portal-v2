@@ -1,0 +1,40 @@
+---
+// Real, server-served route at /staff/results — direct URL loads hit
+// this file's actual server-rendered HTML (Astro output:'server'),
+// no client router involved.
+import StaffLayout from '../../layouts/StaffLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import ResultsSheetIsland from '../../components/staff/ResultsSheetIsland';
+
+// ── Step 1: server-side auth + role check, BEFORE any data is fetched ──
+// Roles allowed, per the Feature Checklist (row 10: Results / Enter
+// Scores) — matches the old app's renderResults() which redirects
+// student/pin_viewer to renderMyResults() instead (a separate,
+// read-only screen — not built on this route).
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+  'teacher', 'subject_teacher',
+]);
+
+if (auth.status === 'unauthenticated') {
+  // Real server-side redirect. Nothing below this fires first.
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  // Real 403, not the data, not a silent client-side redirect.
+  return Astro.redirect('/403');
+}
+---
+<StaffLayout title="Results Management">
+  <p class="text-sm text-brand-brown-light mb-4">
+    Enter and publish student results. Signed in as role:
+    <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+  </p>
+
+  <!--
+    client:load — context selects, live score-entry table, Save/Calc
+    Positions/Block Results all need to be interactive from first paint,
+    same reasoning as AttendanceMarkerIsland.
+  -->
+  <ResultsSheetIsland client:load role={auth.role} userId={auth.userId} />
+</StaffLayout>

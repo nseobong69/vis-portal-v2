@@ -1,0 +1,34 @@
+---
+// Real, served route at /staff/score-sheet.
+import StaffLayout from '../../layouts/StaffLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import ScoreSheetIsland from '../../components/staff/ScoreSheetIsland';
+
+// Allowed roles per renderScoreSheet() in the old app — unlike Mark
+// Sheet, subject_teacher IS allowed here (they generate a sheet for
+// just their own assigned subject).
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+  'teacher', 'subject_teacher',
+]);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+// TODO(Phase 1 real session): port SCHOOL_SETTINGS.school_name from
+// wherever the school-settings singleton is re-implemented; hardcoded
+// here since that table isn't wired up yet (same TODO as
+// attendance-report.astro).
+const schoolName = 'Victorious International Schools';
+---
+<StaffLayout title="Score Sheet">
+  <p class="text-sm text-brand-brown-light mb-4">
+    Generate a subject score sheet PDF. Signed in as role:
+    <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+  </p>
+  <ScoreSheetIsland client:load role={auth.role} userId={auth.userId} schoolName={schoolName} />
+</StaffLayout>

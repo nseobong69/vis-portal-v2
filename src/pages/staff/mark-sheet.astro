@@ -1,0 +1,36 @@
+---
+// Real, served route at /staff/mark-sheet.
+import StaffLayout from '../../layouts/StaffLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import MarkSheetIsland from '../../components/staff/MarkSheetIsland';
+
+// The old app's renderMarkSheet() lets a subject_teacher call the
+// function but immediately toasts an error and returns — the nav menu
+// itself never gives them the link (Section 6496 confirms no Mark
+// Sheet entry in the subject_teacher menu). Since this is a real
+// server route now, subject_teacher is excluded from checkAuth's
+// allowed list outright rather than allowed-then-toasted, which is
+// the equivalent server-side behavior for a role with no legitimate
+// path to this screen.
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'teacher',
+]);
+
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+// TODO(Phase 1 real session): port SCHOOL_SETTINGS.school_name — see
+// the same TODO in attendance-report.astro / score-sheet.astro.
+const schoolName = 'Victorious International Schools';
+---
+<StaffLayout title="Mark Sheet">
+  <p class="text-sm text-brand-brown-light mb-4">
+    Generate a class-wide mark sheet PDF. Signed in as role:
+    <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+  </p>
+  <MarkSheetIsland client:load role={auth.role} userId={auth.userId} schoolName={schoolName} />
+</StaffLayout>
