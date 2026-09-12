@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-
-declare global {
-  interface Window {
-    QRCode?: any;
-    JsBarcode?: any;
-  }
-}
+import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
 
 interface Student {
   id: string;
@@ -18,65 +13,50 @@ interface IdCardGeneratorProps {
   students: Student[];
 }
 
-// Loads QRCode.js and JsBarcode from cdnjs at runtime (same "no npm
-// install available in this environment" reason every other phase has
-// used CDN scripts for) — face-api.js face-match-to-photo is NOT
-// included here; that would need the same proctoring-grade model
-// loading FaceCheckGate.tsx already does, which is a much bigger lift
-// than a card layout and is left for a dedicated follow-up.
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) return resolve();
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(s);
-  });
-}
-
+// FIX: the previous version loaded QRCode.js/JsBarcode from cdnjs at
+// runtime via injected <script> tags — that's what produced "Could not
+// load QR/barcode libraries from cdnjs" in production (cdnjs
+// unreachable/blocked from this deployment). `qrcode` is already an
+// npm dependency (used elsewhere in this repo); `jsbarcode` needs
+// adding to package.json (see note in the delivered zip). Both are now
+// real ES imports bundled at build time -- nothing fetched from a CDN
+// at runtime, so this can't fail the way the old version did.
+//
+// face-api.js face-match-to-photo is still NOT included here -- that
+// would need the same proctoring-grade model loading FaceCheckGate.tsx
+// already does, a much bigger lift than a card layout, left for a
+// dedicated follow-up.
 export default function IdCardGenerator({ students }: IdCardGeneratorProps) {
   const [selectedId, setSelectedId] = useState(students[0]?.id ?? '');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [libsReady, setLibsReady] = useState(false);
-  const qrRef = useRef<HTMLDivElement>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const barcodeRef = useRef<SVGSVGElement>(null);
 
   const student = students.find((s) => s.id === selectedId);
 
   useEffect(() => {
-    Promise.all([
-      loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'),
-      loadScript('https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js'),
-    ])
-      .then(() => setLibsReady(true))
-      .catch(() => setError('Could not load QR/barcode libraries from cdnjs.'));
-  }, []);
+    if (!student) return;
+    setError(null);
 
-  useEffect(() => {
-    if (!libsReady || !student) return;
-    if (qrRef.current) {
-      qrRef.current.innerHTML = '';
-      new window.QRCode(qrRef.current, {
-        text: student.admission_no || student.id,
-        width: 96,
-        height: 96,
-      });
+    if (qrCanvasRef.current) {
+      QRCode.toCanvas(qrCanvasRef.current, student.admission_no || student.id, { width: 96, margin: 1 }).catch(
+        () => setError('Could not generate QR code.')
+      );
     }
     if (barcodeRef.current) {
       try {
-        window.JsBarcode(barcodeRef.current, student.admission_no || student.id, {
+        JsBarcode(barcodeRef.current, student.admission_no || student.id, {
           format: 'CODE128',
           height: 30,
           displayValue: false,
         });
       } catch {
-        // admission_no may contain characters CODE128 can't encode — non-fatal
+        // admission_no may contain characters CODE128 can't encode -- non-fatal
       }
     }
-  }, [libsReady, student]);
+  }, [student]);
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -157,7 +137,7 @@ export default function IdCardGenerator({ students }: IdCardGeneratorProps) {
         <p className="text-center text-sm font-semibold text-brand-brown-dark">{student.full_name}</p>
         <p className="text-center text-xs text-brand-brown-light mb-2">{student.class_id}</p>
         <div className="flex flex-col items-center gap-1">
-          <div ref={qrRef} />
+          <canvas ref={qrCanvasRef} />
           <svg ref={barcodeRef} />
         </div>
       </div>
