@@ -1,14 +1,21 @@
 ---
-// Admin Portal — Scholarship
-// Flagged in Phase 0 as data-source-unconfirmed (Section 2.4) — this placeholder queries `students` only until the real scholarship table is confirmed.
+// Replaces the earlier stub (raw class_id UUIDs shown instead of class
+// names, no class filter, no search, no way to remove a scholarship).
+// Ported from renderScholarship()/loadScholarshipList()/
+// removeScholarship() (index.html ~25353-25405).
+//
+// KNOWN GUESS, flagged rather than hidden: the "✏️ Edit" link in
+// ScholarshipManager.tsx points to /admin/students?search={name} — I
+// don't know whether admin/students.astro actually reads a `search`
+// query param and pre-filters on load. If it doesn't, that link just
+// opens the plain Students list. Check that page before relying on it;
+// I have not verified it.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+import ScholarshipManager from '../../components/admin/ScholarshipManager';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'bursar']);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -17,28 +24,21 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('students')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'full_name', header: 'Student' },
-  { key: 'class_id', header: 'Class' }
-];
+const { data: classes, error } = await supabase.from('classes').select('id, name, arm').order('name');
 ---
 <AdminLayout title="Scholarship" activePath="/admin/scholarship" role={auth.role}>
-  <Card title="Scholarship">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Scholarship Students</h1>
+      <p class="text-sm text-brand-brown-light">All students/pupils on scholarship.</p>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `students` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load classes: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+
+    <ScholarshipManager client:load classes={(classes ?? []) as any} />
+  </div>
 </AdminLayout>
