@@ -36,7 +36,17 @@
 //
 // ADDED: PWA installability — manifest link + service worker
 // registration, same two blocks added to every layout in this app.
+//
+// ADDED: AI Assistant — old app restricts this to every role except
+// student/parent (index.html line ~6224), not admin-only; AdminLayout
+// is never used by student/parent anyway, so no extra role check needed
+// here. Rendered as a floating button since this shell uses a top nav
+// with no sidebar footer to put it in, unlike the old app — same
+// feature, different chrome to fit what's actually here. If
+// StaffLayout.astro exists as a separate file for teacher-only routes,
+// it needs this same addition; not covered by this edit.
 import '../styles/global.css';
+import AIChatButton from '../components/shared/AIChatButton';
 
 interface Props {
   title: string;
@@ -150,6 +160,7 @@ const navItems = [
   <main class="max-w-[1400px] mx-auto px-5 py-8">
     <slot />
   </main>
+  <AIChatButton client:load />
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
