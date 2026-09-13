@@ -1,26 +1,56 @@
 ---
-// Admin Portal — Account Creation
-// Was missing entirely from the Phase 1 routing-shell pass (nav item
-// existed in AdminLayout, route did not). Now wired to
-// /api/admin/accounts/create.ts, which uses a Supabase service-role
-// key — the one genuinely privileged write in this whole portal, see
-// that file's comment for why.
+// Admin Portal — New Student/Staff Accounts (bulk credential creation)
+// FULL REBUILD. The previous version of this page (image comparison:
+// a generic "Full Name / Email / Role / Create Account" single-person
+// form) was a stand-in that didn't match the old app's real flow at
+// all — pick a class, see every student in it without an account yet,
+// bulk-generate or hand-type admission numbers/passwords per row, and
+// create real Supabase Auth accounts for all of them at once. Same for
+// staff. Ported from renderACNew('student')/renderACNewStaff()/
+// loadACStudentList()/saveStudentAccountCreds()/saveStaffAccountCreds()
+// (index.html ~L18535-18790).
+//
+// Reads ?type=staff from the query string so the "Account Creation"
+// hub page's New Student/New Staff buttons can each land on the right
+// tab directly — defaults to the Students tab otherwise.
+//
+// NOT ported: sendLoginDetailsEmail() — the old app emails the new
+// login details to the student/staff member on successful creation.
+// This version creates the account and shows the same success toast,
+// but does not send that email (a separate integration, same class of
+// gap as the admission-confirmation email flagged in the New Admission
+// build).
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import Card from '../../../components/ui/Card';
-import AccountCreateForm from '../../../components/admin/AccountCreateForm';
+import NewAccountsPanel from '../../../components/admin/NewAccountsPanel';
 import { checkAuth } from '../../../lib/auth';
+import { createServerSupabase } from '../../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor']);
-
+const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
 if (auth.status === 'unauthorized') {
   return Astro.redirect('/403');
 }
+
+const supabase = createServerSupabase(Astro.cookies);
+
+// Same role-scoped class list as renderACNew('student') (index.html
+// ~L18541-18543).
+let classesQuery = supabase.from('classes').select('id, name, arm, level').order('name');
+if (auth.role === 'head_teacher') {
+  classesQuery = classesQuery.in('level', ['kindergarten', 'nursery', 'primary']);
+} else if (auth.role === 'principal') {
+  classesQuery = classesQuery.eq('level', 'secondary');
+}
+const { data: classes } = await classesQuery;
+
+const typeParam = Astro.url.searchParams.get('type') === 'staff' ? 'staff' : 'students';
+const canManageStaff = ['super_admin', 'admin'].includes(auth.role);
 ---
 <AdminLayout title="Account Creation" activePath="/admin/accounts/create" role={auth.role}>
   <Card title="Create a New Account">
-    <AccountCreateForm client:load />
+    <NewAccountsPanel client:load initialType={typeParam} classes={(classes ?? []) as any} canManageStaff={canManageStaff} />
   </Card>
 </AdminLayout>
