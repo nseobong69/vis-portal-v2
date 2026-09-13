@@ -3,6 +3,9 @@
 // /cbt-info, /student-life. No auth check here on purpose: these are
 // the unauthenticated public site (Section 3 still requires them to be
 // real server-rendered routes, just not gated).
+//
+// ADDED: PWA installability — manifest link + service worker
+// registration, same two blocks added to every layout in this app.
 import '../styles/global.css';
 import { createServerSupabase } from '../lib/supabase';
 
@@ -35,6 +38,10 @@ const logoUrl = ss?.logo_url || '';
   <title>{title} · {schoolName}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#5D4037" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <!--
     AdSense — same publisher ID as the old app (index.html line 136).
     Ad slot ID below is carried over as-is ("0000000000"); the old app
@@ -68,5 +75,12 @@ const logoUrl = ss?.logo_url || '';
   <main>
     <slot />
   </main>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
