@@ -1,11 +1,13 @@
 ---
 // Admin Portal — Reception
-// Check-in/out actions not ported — list only.
+// Full port: check-in/out actions wired through /api/admin/reception/action.
+// Ported from renderReception() (index.html ~L20814-20916). Table: visitors.
+// Gate-pass PDF is generated client-side (jsPDF) using school_settings
+// for the header, same as the old downloadGatePass().
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
+import ReceptionIsland from '../../components/admin/ReceptionIsland';
 
 const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
 
@@ -17,29 +19,16 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('visitors')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'full_name', header: 'Visitor' },
-  { key: 'purpose', header: 'Purpose' },
-  { key: 'checked_in_at', header: 'Checked In' }
-];
+const [{ data: visitors }, { data: schoolSettings }] = await Promise.all([
+  supabase.from('visitors').select('*').order('check_in_time', { ascending: false }).limit(200),
+  supabase.from('school_settings').select('school_name, logo_url').eq('id', 1).single(),
+]);
 ---
 <AdminLayout title="Reception" activePath="/admin/reception" role={auth.role}>
-  <Card title="Reception">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `visitors` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
+  <ReceptionIsland
+    client:load
+    initialVisitors={(visitors ?? []) as any}
+    schoolName={schoolSettings?.school_name || 'SCHOOL'}
+    logoUrl={schoolSettings?.logo_url || null}
+  />
 </AdminLayout>
