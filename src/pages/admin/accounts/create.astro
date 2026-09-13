@@ -44,13 +44,59 @@ if (auth.role === 'head_teacher') {
 } else if (auth.role === 'principal') {
   classesQuery = classesQuery.eq('level', 'secondary');
 }
-const { data: classes } = await classesQuery;
 
+const { data: classes } = await classesQuery;
 const typeParam = Astro.url.searchParams.get('type') === 'staff' ? 'staff' : 'students';
 const canManageStaff = ['super_admin', 'admin'].includes(auth.role);
 ---
 <AdminLayout title="Account Creation" activePath="/admin/accounts/create" role={auth.role}>
-  <Card title="Create a New Account">
-    <NewAccountsPanel client:load initialType={typeParam} classes={(classes ?? []) as any} canManageStaff={canManageStaff} />
+  <Card title="Account Creation">
+    <div class="mb-5 flex flex-wrap gap-2">
+      <a
+        href="/admin/accounts/create?type=students"
+        class:list={[
+          'flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-colors',
+          typeParam === 'students'
+            ? 'bg-brand-brown-dark text-white'
+            : 'border border-brand-cream-dark text-brand-brown-dark hover:bg-brand-cream',
+        ]}
+      >
+        👥 New Student Accounts
+      </a>
+      {canManageStaff && (
+        <a
+          href="/admin/accounts/create?type=staff"
+          class:list={[
+            'flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-colors',
+            typeParam === 'staff'
+              ? 'bg-brand-brown-dark text-white'
+              : 'border border-brand-cream-dark text-brand-brown-dark hover:bg-brand-cream',
+          ]}
+        >
+          🪪 New Staff Accounts
+        </a>
+      )}
+      <a
+        href="/admin/accounts/existing?type=student"
+        class="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold border border-brand-cream-dark text-brand-brown-dark hover:bg-brand-cream transition-colors"
+      >
+        👤 Existing Student Accounts
+      </a>
+      {canManageStaff && (
+        <a
+          href="/admin/accounts/existing?type=staff"
+          class="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold border border-brand-cream-dark text-brand-brown-dark hover:bg-brand-cream transition-colors"
+        >
+          🪪 Existing Staff Accounts
+        </a>
+      )}
+    </div>
+
+    <NewAccountsPanel
+      client:load
+      initialType={typeParam}
+      classes={(classes ?? []) as any}
+      canManageStaff={canManageStaff}
+    />
   </Card>
 </AdminLayout>
