@@ -10,6 +10,7 @@ export const prerender = false;
 // write arbitrary columns to arbitrary tables).
 const TABLE_FIELDS: Record<string, string[]> = {
   school_day_status: ['date', 'status'],
+  aptitude_codes: ['code'],
 };
 
 const ALLOWED_ROLES = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal'];
