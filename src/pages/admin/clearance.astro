@@ -1,44 +1,79 @@
 ---
-// Admin Portal — Student Clearance
-// Clearance logic (fee_payments join + sign-off) not ported — student list only.
+// FIX (the bug the screenshots showed): the previous version of this
+// page selected `students.class_id` and rendered it raw in the "Class"
+// column instead of joining `classes` for a name — that's why the old
+// screenshot showed UUIDs like "6b680ab2-4e88-..." where a class name
+// (e.g. "JSS 1") should be. This version selects `class_name` directly
+// off `students` (same column the old app's own renderClearance() reads
+// at index.html ~L14822 — `s.class_name`, not a class_id lookup) and
+// keeps class_id only as the value used by the class-filter dropdown.
+//
+// Ports index.html's renderClearance() (~L14787-14910) in full:
+//   - Fee Status / Amount Paid / Balance / Results columns, computed
+//     from each student's `fee_payments` the same way the old app does
+//     (see ClearanceManager.tsx's computeFee() for the line-by-line
+//     port of that math).
+//   - Pay -> a real "Record Payment" modal (old app used the same
+//     dedicated modal, not a prompt()).
+//   - Clear/Revoke -> students.cleared toggle.
+//   - Lock/Unlock -> students.results_blocked toggle.
+// All three actions post to api/admin/clearance/mutate.ts, following
+// the same POST-action-dispatch shape as api/admin/finance/mutate.ts.
+//
+// NOT ported: the old app's "Add Fee Payment" header button
+// (showAddFeeModal()) — that opens the same class-wide invoice creator
+// already built for Finance Records (InvoiceForm in
+// FinanceRecordsManager.tsx). Rather than duplicate it here, this page
+// links to /admin/finance-records for creating new invoices; Clearance
+// stays focused on the old app's own per-student Pay/Clear/Lock triage
+// view, which is all renderClearance() itself ever rendered inline.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
-import { checkAuth } from '../../lib/auth';
+import ClearanceManager from '../../components/admin/ClearanceManager';
+import { checkAuth, loginRedirect } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+// Same role list Phase 0's Feature Checklist table gives Student
+// Clearance (row 20): super_admin, admin, proprietor, head_teacher,
+// principal, bursar. Deliberately not FINANCE_ROLES from
+// api/admin/finance/mutate.ts — head_teacher/principal get Clearance
+// but not Finance in the old app's actual menus.
+const CLEARANCE_ROLES = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'bursar'] as const;
 
-if (auth.status === 'unauthenticated') {
-  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
-}
-if (auth.status === 'unauthorized') {
-  return Astro.redirect('/403');
-}
+const auth = await checkAuth(Astro.cookies, [...CLEARANCE_ROLES]);
+if (auth.status === 'unauthenticated') return loginRedirect(Astro.url);
+if (auth.status === 'unauthorized') return Astro.redirect('/403');
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('students')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'full_name', header: 'Student' },
-  { key: 'class_id', header: 'Class' }
-];
+const [{ data: students, error }, { data: classes }] = await Promise.all([
+  supabase
+    .from('students')
+    .select('id, full_name, admission_number, class_name, class_id, cleared, results_blocked, fee_payments(amount, amount_paid, status)')
+    .order('class_name'),
+  supabase.from('classes').select('id, name, arm').order('name'),
+]);
 ---
 <AdminLayout title="Student Clearance" activePath="/admin/clearance" role={auth.role}>
-  <Card title="Student Clearance">
+  <div class="flex flex-col gap-4">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Student Clearance</h1>
+        <p class="text-sm text-brand-brown-light">Manage fee clearance — class by class.</p>
+      </div>
+      <a href="/admin/finance-records" class="text-sm font-semibold text-brand-brown hover:underline self-center">
+        + Add Fee Payment
+      </a>
+    </div>
+
     {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `students` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load students: {error.message}
+      </div>
     )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+
+    <ClearanceManager
+      client:load
+      students={(students ?? []) as any}
+      classes={(classes ?? []) as any}
     />
-  </Card>
+  </div>
 </AdminLayout>
