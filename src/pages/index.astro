@@ -24,9 +24,10 @@
 //      now including each tab's image. Ported as a static grid — the old
 //      app's interactive tab/accordion behavior is a client-side
 //      enhancement, not required for feature parity.
-//   5. News (#hp-news)                     — still a placeholder grid;
-//      wiring to the live public_posts table + realtime subscription is
-//      a separate pass (needs the real Supabase schema) — untouched here.
+//   5. News (#hp-news)                     — now wired to the live
+//      public_posts table (server-rendered) with a client-side realtime
+//      subscription that reloads the page on any change, mirroring the
+//      old app's postgres_changes channel in hpLoadNews().
 //   6. Leadership (#hp-leadership)         — CMS-driven (hp_leadership_cards),
 //      hides itself when there are no cards, same as the old app.
 //   7. Footer (#hp-footer)                 — brand/contact/nav columns +
@@ -39,7 +40,6 @@
 //   - Admissions form itself (showAdmissionPublic) — CTAs below link to
 //     /admissions, which is not built yet.
 //   - MFA/portal login flow.
-//   - News feed live wiring (see note on section 5 above).
 import PublicLayout from '../layouts/PublicLayout.astro';
 import InfoRow from '../components/InfoRow.astro';
 import Card from '../components/ui/Card';
@@ -64,6 +64,38 @@ const { data: ss } = await supabase
   `)
   .eq('id', 1)
   .single();
+
+// ── News — live public_posts feed ──
+// Mirrors hpLoadNews() from the old index.html: published posts only,
+// newest first. Realtime updates are handled client-side below (see the
+// <script> at the bottom of the News section) since server-rendered props
+// can't push themselves — on any change to public_posts, the page reloads
+// and this query runs again with the current data.
+const { data: posts } = await supabase
+  .from('public_posts')
+  .select('id, title, content, image_url, image_urls, created_at, author_name, author_role')
+  .eq('is_published', true)
+  .order('created_at', { ascending: false })
+  .limit(100);
+
+function firstImage(p: { image_url: string | null; image_urls: any }): string {
+  if (Array.isArray(p.image_urls) && p.image_urls.length) {
+    const item = p.image_urls[0];
+    return typeof item === 'string' ? item : item?.url ?? '';
+  }
+  return p.image_url ?? '';
+}
+
+function excerpt(text: string, len = 140): string {
+  if (!text) return '';
+  return text.length > len ? text.slice(0, len) + '…' : text;
+}
+
+function fmtDate(d: string): string {
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+const newsPosts = posts ?? [];
 
 // Small helper — every *_cards / *_stats / *_tabs column is stored as a
 // JSON string (same defensive parse settings.astro uses for hp_apart_cards
@@ -311,12 +343,12 @@ const socialLinks = ([
   </section>
 
   <!-- ══ NEWS ═══════════════════════════════════════════════════════
-       TODO (separate pass, not done here): wire to the live public_posts
-       table with a realtime subscription (hpLoadNews() + Supabase
-       postgres_changes channel in the old app). This scaffold still has
-       no Supabase query built against that table yet, so it stays a
-       static placeholder, not a silent drop. Heading/subtext now come
-       from school_settings; the toggle below matches public_feed_visible. ═ -->
+       Wired to the live public_posts table (server-rendered, published
+       posts only, newest first — matches hpLoadNews() from index.html).
+       First 3 shown, rest revealed via "SEE MORE". A client-side realtime
+       subscription reloads the page on any public_posts change, mirroring
+       the old app's postgres_changes channel — so a newly published post
+       shows up in open tabs without a manual refresh. ══════════════════ -->
   {ss?.public_feed_visible !== false && (
     <section id="news" class="px-6 py-16" aria-label="School news">
       <div class="max-w-[1400px] mx-auto">
@@ -324,10 +356,52 @@ const socialLinks = ([
           <h2 class="font-heading font-extrabold text-3xl text-brand-brown-dark">{ss?.hp_news_heading || 'School News'}</h2>
           <p class="text-brand-brown-light text-sm">{ss?.hp_news_subtext || 'Stories about the people, ideas, and events shaping our school community.'}</p>
         </div>
-        <p class="text-sm text-brand-brown-light italic mb-4">
-          Live news feed (from <code class="font-mono text-xs bg-brand-cream px-1 py-0.5 rounded">public_posts</code>)
-          is not wired up in this pass.
-        </p>
+
+        {newsPosts.length === 0 ? (
+          <p class="text-sm text-brand-brown-light italic mb-4">No news posted yet — check back soon.</p>
+        ) : (
+          <>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
+              {newsPosts.slice(0, 3).map((p) => (
+                <Card>
+                  {firstImage(p) && (
+                    <img src={firstImage(p)} alt="" class="w-full h-40 object-cover rounded-md mb-3" loading="lazy" />
+                  )}
+                  <div class="text-xs text-brand-brown-light mb-1.5">{fmtDate(p.created_at)} · 1 min read</div>
+                  <h3 class="font-heading font-bold text-lg text-brand-brown-dark mb-2">{p.title || 'Untitled'}</h3>
+                  <p class="text-sm text-brand-brown-light leading-relaxed mb-3">{excerpt(p.content)}</p>
+                </Card>
+              ))}
+            </div>
+
+            {newsPosts.length > 3 && (
+              <div id="hp-news-hidden" class="hidden grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
+                {newsPosts.slice(3).map((p) => (
+                  <Card>
+                    {firstImage(p) && (
+                      <img src={firstImage(p)} alt="" class="w-full h-40 object-cover rounded-md mb-3" loading="lazy" />
+                    )}
+                    <div class="text-xs text-brand-brown-light mb-1.5">{fmtDate(p.created_at)} · 1 min read</div>
+                    <h3 class="font-heading font-bold text-lg text-brand-brown-dark mb-2">{p.title || 'Untitled'}</h3>
+                    <p class="text-sm text-brand-brown-light leading-relaxed mb-3">{excerpt(p.content)}</p>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {newsPosts.length > 3 && (
+              <div class="text-center">
+                <button
+                  id="hp-news-see-more"
+                  class="inline-flex items-center gap-2 border border-brand-brown-dark text-brand-brown-dark font-semibold rounded-full px-6 py-2 text-sm hover:bg-brand-brown-dark hover:text-white"
+                >
+                  SEE MORE →
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
         <!--
           Ad slot between news items, carried over from index.html
           (data-pp-ad="between-*"). Same publisher ID; slot ID is the old
@@ -336,6 +410,35 @@ const socialLinks = ([
         -->
         <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-7485758874129054" data-ad-slot="0000000000" data-ad-format="fluid" data-ad-layout-key="-fb+5w+4e-db+86"></ins>
       </div>
+
+      <script>
+        document.getElementById('hp-news-see-more')?.addEventListener('click', (e) => {
+          document.getElementById('hp-news-hidden')?.classList.remove('hidden');
+          (e.currentTarget as HTMLElement).remove();
+        });
+      </script>
+
+      <script>
+        import { createBrowserSupabase } from '../lib/supabase';
+
+        // Old app's equivalent: .on('postgres_changes', {event:'*', schema:'public',
+        // table:'public_posts'}, () => reload). Same idea — on any change to
+        // public_posts, refresh so the server-rendered list re-queries with
+        // current data. Simpler and more reliable than hand-patching the
+        // server-rendered cards client-side.
+        const supabaseBrowser = createBrowserSupabase();
+
+        supabaseBrowser
+          .channel('public-posts-homepage')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'public_posts' },
+            () => {
+              window.location.reload();
+            }
+          )
+          .subscribe();
+      </script>
     </section>
   )}
 
