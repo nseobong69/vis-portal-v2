@@ -1,0 +1,70 @@
+---
+// Did not exist at all — StudentLayout.astro's nav has always linked to
+// /student/dashboard, and login.astro's role-based redirect sends
+// students here, but there was no file here to receive them (only
+// student/cbt/ and student/attendance.astro existed). Kept
+// intentionally minimal: a real, working landing page rather than a
+// guess at every stat this should eventually show. Expand with real
+// results/fees summaries once those student-side data fetches are
+// confirmed against the actual schema, same rule as everywhere else in
+// this app — no guessing at column names without checking first.
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') {
+  return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+if (auth.status === 'unauthorized') {
+  return Astro.redirect('/403');
+}
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: student } = await supabase
+  .from('students')
+  .select('full_name, admission_number, class_name')
+  .eq('auth_id', auth.userId)
+  .maybeSingle();
+
+const firstName = (student?.full_name || 'Student').trim().split(' ')[0];
+const hr = new Date().getHours();
+const greeting = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+---
+<StudentLayout title="Dashboard" activePath="/student/dashboard">
+  <div class="flex flex-col gap-6">
+    <div>
+      <h1 class="font-heading font-extrabold text-2xl text-brand-brown-dark">{greeting}, {firstName} 👋</h1>
+      <p class="text-sm text-brand-brown-light mt-1">
+        {student?.admission_number || '—'} · {student?.class_name || '—'}
+      </p>
+    </div>
+
+    <div class="grid gap-3.5" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+      <a href="/student/results" class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 hover:bg-brand-cream transition-colors">
+        <div class="text-2xl mb-2">📖</div>
+        <div class="font-bold text-brand-brown-dark">My Results</div>
+      </a>
+      <a href="/student/academics" class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 hover:bg-brand-cream transition-colors">
+        <div class="text-2xl mb-2">🎓</div>
+        <div class="font-bold text-brand-brown-dark">Academics</div>
+      </a>
+      <a href="/student/exams" class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 hover:bg-brand-cream transition-colors">
+        <div class="text-2xl mb-2">💻</div>
+        <div class="font-bold text-brand-brown-dark">Take Exam</div>
+      </a>
+      <a href="/student/fees" class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 hover:bg-brand-cream transition-colors">
+        <div class="text-2xl mb-2">💰</div>
+        <div class="font-bold text-brand-brown-dark">My Fees</div>
+      </a>
+      <a href="/student/attendance" class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 hover:bg-brand-cream transition-colors">
+        <div class="text-2xl mb-2">📅</div>
+        <div class="font-bold text-brand-brown-dark">Attendance</div>
+      </a>
+      <a href="/student/profile" class="bg-white rounded-lg border border-brand-cream-dark shadow-sm p-5 hover:bg-brand-cream transition-colors">
+        <div class="text-2xl mb-2">👤</div>
+        <div class="font-bold text-brand-brown-dark">Profile</div>
+      </a>
+    </div>
+  </div>
+</StudentLayout>
