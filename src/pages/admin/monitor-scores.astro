@@ -1,45 +1,40 @@
 ---
-// Admin Portal — Monitor Scores
-// Real-time monitoring dashboard (per-teacher entry progress) not ported — flat list only.
-import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import Table from '../../components/ui/Table';
+// Real, server-served route at /staff/monitor-scores — direct URL loads
+// hit this file's actual server-rendered HTML (Astro output: 'server'),
+// no client router involved.
+import StaffLayout from '../../layouts/StaffLayout.astro';
 import { checkAuth } from '../../lib/auth';
-import { createServerSupabase } from '../../lib/supabase';
+import MonitorScoresIsland from '../../components/staff/MonitorScoresIsland';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
+// ── Step 1: server-side auth + role check, BEFORE any data is fetched ──
+// Roles allowed, per the Feature Checklist (row 11: Monitor Scores) —
+// matches the old app's renderMonitorScores() comment: super_admin,
+// admin, proprietor (all classes) · principal (secondary only) ·
+// head_teacher (kindergarten/nursery/primary only). teacher and
+// subject_teacher are NOT included — they only get Results (Enter
+// Scores), not this oversight view.
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+]);
 
 if (auth.status === 'unauthenticated') {
+  // Real server-side redirect. Nothing below this fires first.
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
 if (auth.status === 'unauthorized') {
+  // Real 403, not a silent client-side redirect.
   return Astro.redirect('/403');
 }
-
-const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('results')
-  .select('*')
-  .limit(25);
-
-const columns = [
-  { key: 'student_id', header: 'Student' },
-  { key: 'subject_id', header: 'Subject' },
-  { key: 'score', header: 'Score' }
-];
 ---
-<AdminLayout title="Monitor Scores" activePath="/admin/monitor-scores" role={auth.role}>
-  <Card title="Monitor Scores">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `results` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <Table
-      columns={columns}
-      rows={(rows ?? []) as any[]}
-      getRowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
-    />
-  </Card>
-</AdminLayout>
+<StaffLayout title="Monitor Scores">
+  <p class="text-sm text-brand-brown-light mb-4">
+    See which classes have scores entered for a session, term &amp; subject. Signed in as role:
+    <span class="font-semibold text-brand-brown-dark">{auth.role}</span>
+  </p>
+
+  <!--
+    client:load — filters + summary/detail tables all need to be
+    interactive from first paint, same reasoning as ResultsSheetIsland.
+  -->
+  <MonitorScoresIsland client:load role={auth.role} userId={auth.userId} />
+</StaffLayout>
