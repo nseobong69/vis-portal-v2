@@ -1,0 +1,76 @@
+---
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+if (auth.status === 'unauthorized') return Astro.redirect('/403');
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: student } = await supabase.from('students').select('id, full_name, admission_number, class_name').eq('auth_id', auth.userId).maybeSingle();
+const { data: ss } = await supabase.from('school_settings').select('current_session').eq('id', 1).maybeSingle();
+const session = ss?.current_session || '';
+
+const { data: fees } = student?.id
+  ? await supabase.from('fee_payments').select('*').eq('student_id', student.id).order('created_at', { ascending: false })
+  : { data: [] };
+
+function fmtDate(d: string) { return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
+function statusColor(s: string) {
+  if (s === 'paid') return { bg: '#DCFCE7', color: '#16A34A' };
+  if (s === 'partial') return { bg: '#FEF3C7', color: '#D97706' };
+  return { bg: '#FEE2E2', color: '#EF4444' };
+}
+---
+<StudentLayout title="My Fees" activePath="/student/fees">
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-xl text-brand-brown-dark">My Fees</h1>
+      <p class="text-xs text-brand-brown-light">{student?.full_name} · {student?.class_name} · {session}</p>
+    </div>
+
+    {!fees?.length ? (
+      <div class="bg-white rounded-md border border-brand-cream-dark p-10 text-center text-brand-brown-light">No fee records found.</div>
+    ) : (
+      <div class="flex flex-col gap-3">
+        {fees.map((f: any) => {
+          const sc = statusColor(f.status);
+          const balance = Math.max(0, (f.amount ?? 0) - (f.amount_paid ?? 0));
+          return (
+            <div class="bg-white rounded-md border border-brand-cream-dark p-4">
+              <div class="flex justify-between items-start gap-2 mb-3">
+                <div>
+                  <div class="font-bold text-brand-brown-dark">{f.fee_type || f.description || 'School Fee'}</div>
+                  <div class="text-xs text-brand-brown-light">{f.term} · {f.session}</div>
+                </div>
+                <span class="text-xs font-bold px-2 py-0.5 rounded-full" style={`background:${sc.bg};color:${sc.color}`}>
+                  {f.status === 'paid' ? '✓ Paid' : f.status === 'partial' ? '⚡ Partial' : '⚠ Pending'}
+                </span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-brand-cream rounded-md p-2">
+                  <div class="text-[10px] text-brand-brown-light font-semibold">BILLED</div>
+                  <div class="font-bold text-sm text-brand-brown-dark">₦{(f.amount ?? 0).toLocaleString()}</div>
+                </div>
+                <div class="bg-brand-cream rounded-md p-2">
+                  <div class="text-[10px] text-brand-brown-light font-semibold">PAID</div>
+                  <div class="font-bold text-sm" style="color:#16A34A">₦{(f.amount_paid ?? 0).toLocaleString()}</div>
+                </div>
+                <div class="bg-brand-cream rounded-md p-2">
+                  <div class="text-[10px] text-brand-brown-light font-semibold">BALANCE</div>
+                  <div class="font-bold text-sm" style={`color:${balance > 0 ? '#EF4444' : '#16A34A'}`}>₦{balance.toLocaleString()}</div>
+                </div>
+              </div>
+              {f.created_at && <div class="text-[11px] text-brand-brown-light mt-2">Issued: {fmtDate(f.created_at)}</div>}
+            </div>
+          );
+        })}
+      </div>
+    )}
+
+    <div class="bg-white rounded-md border border-brand-cream-dark p-4 text-xs text-brand-brown-light text-center">
+      To make a payment, contact the school bursar or visit the school office.
+    </div>
+  </div>
+</StudentLayout>

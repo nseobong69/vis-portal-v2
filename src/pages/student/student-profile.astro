@@ -1,0 +1,87 @@
+---
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+if (auth.status === 'unauthorized') return Astro.redirect('/403');
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: student } = await supabase
+  .from('students')
+  .select('*')
+  .eq('auth_id', auth.userId)
+  .maybeSingle();
+
+function field(label: string, value: any) {
+  return { label, value: value ?? '—' };
+}
+
+const bioFields = [
+  field('Full Name', student?.full_name),
+  field('Admission Number', student?.admission_number),
+  field('Class', student?.class_name),
+  field('Gender', student?.gender),
+  field('Date of Birth', student?.date_of_birth),
+  field('Nationality', student?.nationality),
+  field('State of Origin', student?.state_of_origin),
+  field('LGA', student?.lga),
+  field('Religion', student?.religion),
+];
+
+const parentFields = [
+  field('Parent / Guardian', student?.parent_name),
+  field('Relationship', student?.parent_relationship),
+  field('Phone', student?.phone),
+  field('Email', student?.email),
+  field('Parent Address', student?.parent_address),
+  field('Emergency Contact', student?.emergency_name),
+  field('Emergency Phone', student?.emergency_phone),
+];
+---
+<StudentLayout title="My Profile" activePath="/student/profile">
+  <div class="flex flex-col gap-4">
+    <div class="flex items-center gap-4 bg-white rounded-md border border-brand-cream-dark p-5">
+      {student?.avatar_url ? (
+        <img src={student.avatar_url} class="w-16 h-16 rounded-xl object-cover" alt="Photo" />
+      ) : (
+        <div class="w-16 h-16 rounded-xl bg-brand-cream flex items-center justify-center text-2xl font-bold text-brand-brown-dark">
+          {(student?.full_name || 'S').charAt(0).toUpperCase()}
+        </div>
+      )}
+      <div>
+        <div class="font-heading font-bold text-lg text-brand-brown-dark">{student?.full_name || '—'}</div>
+        <div class="text-xs text-brand-brown-light">{student?.admission_number} · {student?.class_name}</div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-md border border-brand-cream-dark overflow-hidden">
+      <div class="px-4 py-3 border-b border-brand-cream-dark font-heading font-semibold text-sm text-brand-brown-dark">Biodata</div>
+      <div class="divide-y divide-brand-cream-dark">
+        {bioFields.map(({ label, value }) => (
+          <div class="flex gap-3 px-4 py-3">
+            <div class="text-xs text-brand-brown-light w-32 shrink-0 pt-0.5">{label}</div>
+            <div class="text-sm text-brand-brown-dark font-medium">{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="bg-white rounded-md border border-brand-cream-dark overflow-hidden">
+      <div class="px-4 py-3 border-b border-brand-cream-dark font-heading font-semibold text-sm text-brand-brown-dark">Parent / Guardian</div>
+      <div class="divide-y divide-brand-cream-dark">
+        {parentFields.map(({ label, value }) => (
+          <div class="flex gap-3 px-4 py-3">
+            <div class="text-xs text-brand-brown-light w-32 shrink-0 pt-0.5">{label}</div>
+            <div class="text-sm text-brand-brown-dark font-medium">{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="text-xs text-brand-brown-light text-center p-3">
+      To update your profile details, contact the school administration.
+    </div>
+  </div>
+</StudentLayout>

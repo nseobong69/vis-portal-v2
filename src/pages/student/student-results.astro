@@ -1,0 +1,94 @@
+---
+import StudentLayout from '../../layouts/StudentLayout.astro';
+import { checkAuth } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+const auth = await checkAuth(Astro.cookies, ['student']);
+if (auth.status === 'unauthenticated') return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+if (auth.status === 'unauthorized') return Astro.redirect('/403');
+
+const supabase = createServerSupabase(Astro.cookies);
+const { data: student } = await supabase.from('students').select('id, full_name, admission_number, class_name').eq('auth_id', auth.userId).maybeSingle();
+
+const { data: results } = student?.id
+  ? await supabase.from('results').select('subject_name, ca_score, exam_score, total, grade, remark, term, session, position, is_absent').eq('student_id', student.id).order('session', { ascending: false }).order('term')
+  : { data: [] };
+
+// Group by session → term
+const grouped: Record<string, Record<string, typeof results>> = {};
+for (const r of results ?? []) {
+  const s = r.session || 'Unknown'; const t = r.term || 'Unknown';
+  grouped[s] = grouped[s] ?? {};
+  grouped[s][t] = grouped[s][t] ?? [];
+  grouped[s][t].push(r);
+}
+const sessions = Object.keys(grouped).sort().reverse();
+const termParam = Astro.url.searchParams.get('term') || '';
+const sessParam = Astro.url.searchParams.get('session') || sessions[0] || '';
+---
+<StudentLayout title="My Results" activePath="/student/results">
+  <div class="flex flex-col gap-4">
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div>
+        <h1 class="font-heading font-bold text-xl text-brand-brown-dark">My Results</h1>
+        <p class="text-xs text-brand-brown-light">{student?.full_name} · {student?.class_name}</p>
+      </div>
+    </div>
+
+    {sessions.length === 0 ? (
+      <div class="bg-white rounded-md border border-brand-cream-dark p-10 text-center text-brand-brown-light">No results published yet.</div>
+    ) : (
+      <div class="flex flex-col gap-5">
+        {sessions.map((sess) => (
+          <div class="flex flex-col gap-3">
+            <div class="font-heading font-bold text-sm text-brand-brown-dark px-1">{sess} Session</div>
+            {Object.keys(grouped[sess]).map((term) => {
+              const rows = grouped[sess][term] ?? [];
+              const pos = rows.find((r) => r.position)?.position;
+              const total = rows.reduce((s, r) => s + (r.total ?? 0), 0);
+              return (
+                <div class="bg-white rounded-md border border-brand-cream-dark overflow-hidden">
+                  <div class="px-4 py-3 border-b border-brand-cream-dark flex justify-between items-center flex-wrap gap-2">
+                    <div class="font-semibold text-sm text-brand-brown-dark">{term}</div>
+                    <div class="flex gap-3 text-xs text-brand-brown-light">
+                      {pos && <span>Position: <strong class="text-brand-brown-dark">{pos}</strong></span>}
+                      <span>Grand Total: <strong class="text-brand-brown-dark">{total.toFixed(1)}</strong></span>
+                    </div>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                      <thead class="bg-brand-cream text-xs font-semibold text-brand-brown-dark">
+                        <tr>
+                          <th class="px-4 py-2 text-left">Subject</th>
+                          <th class="px-4 py-2 text-center">CA</th>
+                          <th class="px-4 py-2 text-center">Exam</th>
+                          <th class="px-4 py-2 text-center">Total</th>
+                          <th class="px-4 py-2 text-center">Grade</th>
+                          <th class="px-4 py-2 text-left">Remark</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-brand-cream-dark">
+                        {rows.map((r) => (
+                          <tr class="hover:bg-brand-cream/40">
+                            <td class="px-4 py-2.5 font-medium text-brand-brown-dark">{r.subject_name}</td>
+                            <td class="px-4 py-2.5 text-center">{r.is_absent ? '-' : (r.ca_score ?? '—')}</td>
+                            <td class="px-4 py-2.5 text-center">{r.is_absent ? '-' : (r.exam_score ?? '—')}</td>
+                            <td class="px-4 py-2.5 text-center font-bold">{r.is_absent ? 'AB' : (r.total ?? '—')}</td>
+                            <td class="px-4 py-2.5 text-center">
+                              <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-cream text-brand-brown-dark">{r.grade ?? '—'}</span>
+                            </td>
+                            <td class="px-4 py-2.5 text-brand-brown-light">{r.is_absent ? 'Absent' : (r.remark ?? '—')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</StudentLayout>
