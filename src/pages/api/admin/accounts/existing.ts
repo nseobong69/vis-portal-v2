@@ -63,7 +63,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!body.id) return new Response(JSON.stringify({ error: 'Missing record id.' }), { status: 400 });
     const cred1 = (body.cred1 || '').trim();
     if (!cred1) return new Response(JSON.stringify({ error: 'First field is required.' }), { status: 400 });
+    // Only student passwords get uppercased — matches the old app's
+    // own rule (studentLogin() uppercases, staffLogin() doesn't;
+    // index.html ~L6015/6021 vs ~L6052/6062). Staff choose real
+    // passwords of their own; students get a surname-derived one.
     const cred2 = (body.cred2 || '').trim();
+    const normalizedCred2 = body.type === 'student' ? cred2.toUpperCase() : cred2;
 
     // Only update identifiers in DB — passwords never get written to
     // DB columns, same rule the old app enforces.
@@ -76,13 +81,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         const authUpd: Record<string, any> = {};
         if (body.type === 'staff') authUpd.email = cred1.toLowerCase();
         if (body.type === 'student') authUpd.email = studentSyntheticEmail(cred1);
-        if (cred2) authUpd.password = cred2;
+        if (cred2) authUpd.password = normalizedCred2;
         if (Object.keys(authUpd).length) {
           await adminSupabase.auth.admin.updateUserById(rec.auth_id, authUpd);
         }
       } else if (cred2) {
         const authEmail = body.type === 'staff' ? cred1.toLowerCase() : studentSyntheticEmail(cred1);
-        const { data: nu } = await adminSupabase.auth.admin.createUser({ email: authEmail, password: cred2, email_confirm: true });
+        const { data: nu } = await adminSupabase.auth.admin.createUser({ email: authEmail, password: normalizedCred2, email_confirm: true });
         if (nu?.user) await supabase.from(table).update({ auth_id: nu.user.id, has_account: true }).eq('id', body.id);
       }
     } catch (e: any) {
@@ -93,7 +98,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (body.action === 'regenCred') {
     if (!body.id) return new Response(JSON.stringify({ error: 'Missing record id.' }), { status: 400 });
-    const newPass = genPassword(8);
+    // Same type-conditional rule as editCred above — only student
+    // passwords get uppercased before touching Auth.
+    const rawPass = genPassword(8);
+    const newPass = body.type === 'student' ? rawPass.toUpperCase() : rawPass;
     const upd: Record<string, any> = {};
     if (body.type === 'student') upd.admission_number = genAdmissionNumber();
 
