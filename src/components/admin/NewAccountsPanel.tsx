@@ -122,9 +122,17 @@ export default function NewAccountsPanel({ initialType, classes, canManageStaff 
   }
 
   async function saveStudents() {
+    // Student passwords are always uppercased before leaving the
+    // browser — matches the old app's studentLogin() rule
+    // (index.html ~L6052/6062: the login form itself uppercases
+    // whatever the student types), and the same rule already applied
+    // to saveStudentAccountCreds() there and to this app's login.ts /
+    // existing.ts. Staff passwords (saveStaff() below) are
+    // deliberately NOT uppercased — staffLogin() never uppercases,
+    // since staff choose real passwords of their own.
     const rows = Object.entries(studentCreds)
       .filter(([, v]) => v.adm?.trim() && v.pass?.trim())
-      .map(([id, v]) => ({ id, adm: v.adm.trim(), pass: v.pass.trim() }));
+      .map(([id, v]) => ({ id, adm: v.adm.trim(), pass: v.pass.trim().toUpperCase() }));
     if (!rows.length) { setError('No credentials to save. Fill in at least one row.'); return; }
     setSaving(true);
     setError('');
