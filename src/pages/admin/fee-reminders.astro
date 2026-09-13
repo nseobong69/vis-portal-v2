@@ -1,0 +1,155 @@
+---
+// Fixes the 404 at /admin/fee-reminders flagged as UNCONFIRMED in
+// AdminLayout.astro's own comment — this route genuinely did not exist.
+// Ports index.html's renderFeeReminders() + _feeReminderCandidates()
+// (~L20387-20507) almost line-for-line on the server side; the actual
+// sending now reuses lib/emailjs-browser.ts (the same fix built for
+// EmailComposeForm.tsx) instead of a second, slightly different
+// send implementation.
+//
+// NOT ported: _maybeAutoRunFeeReminders()'s once-per-day-on-login
+// auto-trigger. That relied on a localStorage timestamp checked at
+// login in a single long-lived SPA session — there's no equivalent
+// moment in a real multi-page server-rendered app (every page load is
+// its own request, not "the app just started"). "Send Reminders Now"
+// (manual=true in the old app, which already skips the interval check)
+// is the only trigger this page exposes; a real cron-style version
+// would need a scheduled job hitting a server route, which is a
+// different, larger piece of infrastructure than this page itself.
+//
+// SCHEMA NOTE (matches the old app's own header comment at L20378-20385
+// verbatim — this table does not exist yet, create it before this page
+// can log anything):
+//   CREATE TABLE IF NOT EXISTS fee_reminder_log (
+//     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+//     student_id uuid, student_name text, fee_payment_id uuid,
+//     recipient_email text, recipient_name text, balance numeric,
+//     channel text DEFAULT 'email', status text DEFAULT 'sent',
+//     error_message text, sent_at timestamptz DEFAULT now()
+//   );
+// ALSO NEEDED on school_settings (reminder settings columns — the old
+// app read these with parseInt/parseFloat fallbacks, so missing columns
+// degrade to defaults rather than erroring; add them when convenient,
+// not blocking):
+//   fee_reminders_enabled boolean, fee_reminder_interval_days integer,
+//   fee_reminder_min_balance numeric
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import FeeRemindersManager from '../../components/admin/FeeRemindersManager';
+import { checkAuth, loginRedirect } from '../../lib/auth';
+import { createServerSupabase } from '../../lib/supabase';
+
+// Exact role list from the old app's own gate (index.html line 6246):
+// ['super_admin','admin','proprietor','head_teacher','principal','bursar']
+const REMINDER_ROLES = ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal', 'bursar'] as const;
+
+const auth = await checkAuth(Astro.cookies, [...REMINDER_ROLES]);
+if (auth.status === 'unauthenticated') return loginRedirect(Astro.url);
+if (auth.status === 'unauthorized') return Astro.redirect('/403');
+
+const supabase = createServerSupabase(Astro.cookies);
+
+const { data: settings } = await supabase
+  .from('school_settings')
+  .select('fee_reminders_enabled, fee_reminder_interval_days, fee_reminder_min_balance, emailjs_service_id, emailjs_template_id, emailjs_public_key, reply_email, school_name')
+  .eq('id', 1)
+  .single();
+
+const cfg = {
+  enabled: settings?.fee_reminders_enabled !== false,
+  intervalDays: Number(settings?.fee_reminder_interval_days) || 7,
+  minBalance: Number(settings?.fee_reminder_min_balance) || 0,
+};
+const emailjsConfig = {
+  service_id: settings?.emailjs_service_id || null,
+  template_id: settings?.emailjs_template_id || null,
+  public_key: settings?.emailjs_public_key || null,
+  reply_email: settings?.reply_email || null,
+  school_name: settings?.school_name || null,
+};
+
+// Ports _feeReminderCandidates() (index.html ~L20395-20426) verbatim:
+// unpaid/partial fee_payments -> balance per row -> grouped by student
+// -> resolved to a parent's email/name if one exists, else the
+// student's own -> dropped entirely if neither has an email on file.
+let candidates: Array<{ studentId: string; studentName: string; className: string | null; toEmail: string; toName: string; balance: number }> = [];
+let candidatesError: string | null = null;
+
+const { data: unpaid, error: unpaidErr } = await supabase
+  .from('fee_payments')
+  .select('id, student_id, amount, amount_paid, status')
+  .in('status', ['pending', 'partial']);
+
+if (unpaidErr) {
+  candidatesError = unpaidErr.message;
+} else {
+  const rows = (unpaid || [])
+    .map((p) => ({ ...p, balance: Math.max(0, (Number(p.amount) || 0) - (Number(p.amount_paid) || 0)) }))
+    .filter((p) => p.balance > 0);
+
+  const studentIds = [...new Set(rows.map((r) => r.student_id).filter(Boolean))];
+
+  if (studentIds.length) {
+    const [{ data: students }, { data: parents }] = await Promise.all([
+      supabase.from('students').select('id, full_name, email, class_name').in('id', studentIds),
+      supabase.from('parents').select('id, full_name, email, student_ids'),
+    ]);
+    const stuMap = new Map((students || []).map((s) => [s.id, s]));
+
+    const byStudent = new Map<string, { total: number }>();
+    rows.forEach((r) => {
+      const entry = byStudent.get(r.student_id) || { total: 0 };
+      entry.total += r.balance;
+      byStudent.set(r.student_id, entry);
+    });
+
+    candidates = Array.from(byStudent.entries())
+      .map(([studentId, g]) => {
+        const stu = stuMap.get(studentId);
+        if (!stu) return null;
+        // student_ids may be a real array column or (per the old app's
+        // own defensive check) a stringified one — handled the same
+        // way here.
+        const parent = (parents || []).find((p) => {
+          const ids = p.student_ids;
+          if (Array.isArray(ids)) return ids.includes(studentId);
+          if (typeof ids === 'string') return ids.includes(studentId);
+          return false;
+        });
+        const toEmail = parent?.email || stu.email;
+        const toName = parent?.full_name || stu.full_name;
+        if (!toEmail) return null;
+        return { studentId, studentName: stu.full_name, className: stu.class_name, toEmail, toName, balance: g.total };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null)
+      .filter((c) => c.balance >= cfg.minBalance);
+  }
+}
+
+const { data: log } = await supabase
+  .from('fee_reminder_log')
+  .select('*')
+  .order('sent_at', { ascending: false })
+  .limit(50);
+---
+<AdminLayout title="Fee Reminders" activePath="/admin/fee-reminders" role={auth.role}>
+  <div class="flex flex-col gap-4">
+    <div>
+      <h1 class="font-heading font-bold text-2xl text-brand-brown-dark">Fee Reminders</h1>
+      <p class="text-sm text-brand-brown-light">Automated outstanding-balance reminders to parents.</p>
+    </div>
+
+    {candidatesError && (
+      <div class="bg-danger-700/10 border border-danger-700 text-danger-700 text-sm rounded-md p-3">
+        Could not load outstanding balances: {candidatesError}
+      </div>
+    )}
+
+    <FeeRemindersManager
+      client:load
+      initialCandidates={candidates as any}
+      initialLog={(log ?? []) as any}
+      initialSettings={cfg}
+      emailjsConfig={emailjsConfig as any}
+    />
+  </div>
+</AdminLayout>
