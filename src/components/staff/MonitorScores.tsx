@@ -217,4 +217,3 @@ export default function MonitorScores({ role, userId }: Props) {
     </div>
   );
 }
-
