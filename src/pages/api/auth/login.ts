@@ -47,12 +47,37 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     maxAge: data.session.expires_in,
   });
 
-  // NEW: hand the session back to the browser too, so client-side Supabase
-  // calls (React islands using createBrowserSupabase) can be authenticated
-  // via supabase.auth.setSession() instead of running anonymously.
+  // FIX: this response never included `role` at all — login.astro's
+  // role-based redirect (`json.role && DEFAULT_BY_ROLE[json.role]`) was
+  // therefore always falling through to FALLBACK_DEFAULT
+  // ('/admin/dashboard') for EVERY login, students included, no matter
+  // what checkAuth() would correctly resolve them to on the next page.
+  // That's why a student login "succeeded" but still landed on a 403 —
+  // the redirect itself was blind to the role the whole time.
+  //
+  // Same lookup order as checkAuth() (src/lib/auth.ts): profiles by
+  // auth_id first, then students by auth_id. Deliberately NOT doing the
+  // email-fallback+backfill here — that's checkAuth's job on the very
+  // next request, and duplicating it here would just be two places that
+  // can drift out of sync.
+  const user = data.user;
+  let role: string | null = null;
+
+  const { data: profile } = await supabase.from('profiles').select('role, roles').eq('auth_id', user.id).maybeSingle();
+  if (profile) {
+    const allRoles: string[] = (profile.roles && profile.roles.length > 0) ? profile.roles : [profile.role || 'admin'];
+    const priority = ['super_admin', 'admin', 'proprietor', 'principal', 'head_teacher', 'teacher', 'bursar', 'subject_teacher'];
+    role = priority.find((r) => allRoles.includes(r)) || allRoles[0] || null;
+  } else {
+    const { data: student } = await supabase.from('students').select('id').eq('auth_id', user.id).maybeSingle();
+    if (student) role = 'student';
+    else if (isStudent) role = 'student'; // auth_id not backfilled yet — checkAuth will do it next request, but we already know from the email shape
+  }
+
   return new Response(
     JSON.stringify({
       ok: true,
+      role,
       session: {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
