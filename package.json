@@ -21,7 +21,8 @@
     "xlsx": "^0.18.5",
     "html2canvas": "^1.4.1",
     "qrcode": "^1.5.4",
-    "jsbarcode": "^3.11.6"
+    "jsbarcode": "^3.11.6",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
