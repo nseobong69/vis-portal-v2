@@ -1,6 +1,6 @@
 ---
 import { createBrowserSupabase } from '../lib/supabase';
-const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
+const next = Astro.url.searchParams.get('next') ?? null;
 ---
 <!doctype html>
 <html lang="en">
@@ -13,8 +13,9 @@ const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
   <h1>Log in</h1>
   <form id="login-form">
     <div style="margin-bottom: 12px;">
-      <label for="email" style="display:block; font-size: 13px; margin-bottom: 4px;">Email</label>
-      <input id="email" name="email" type="email" required style="width:100%; padding:8px; box-sizing:border-box;" />
+      <label for="identifier" style="display:block; font-size: 13px; margin-bottom: 4px;">Email or Admission Number</label>
+      <input id="identifier" name="identifier" type="text" required style="width:100%; padding:8px; box-sizing:border-box;" />
+      <p style="font-size: 11px; color: #777; margin: 4px 0 0;">Staff: use your email. Students: use your admission number (e.g. VIS/2026/AB12X).</p>
     </div>
     <div style="margin-bottom: 12px;">
       <label for="password" style="display:block; font-size: 13px; margin-bottom: 4px;">Password</label>
@@ -32,13 +33,44 @@ const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
     const form = document.getElementById('login-form') as HTMLFormElement;
     const errorEl = document.getElementById('error') as HTMLParagraphElement;
     const params = new URLSearchParams(window.location.search);
-    const next = params.get('next') ?? '/admin/dashboard';
+    const next = params.get('next'); // may be null — see DEFAULTS below
+
+    // NEW: role-based default landing pages, used only when the login
+    // page was reached with no ?next= (i.e. someone navigated to /login
+    // directly rather than being bounced here from a specific protected
+    // page). Matches the route convention already established elsewhere
+    // in this app (/staff/attendance, /parent/attendance, /student/
+    // attendance, /admin/attendance all real) — NOT independently
+    // verified that /staff/dashboard, /parent/dashboard and /student/
+    // dashboard specifically exist as pages; confirm these three after
+    // deploying and tell me if any of them 404, since this is inferred
+    // from naming convention, not a direct file read.
+    const DEFAULT_BY_ROLE: Record<string, string> = {
+      student: '/student/dashboard',
+      parent: '/parent/dashboard',
+      teacher: '/staff/dashboard',
+      subject_teacher: '/staff/dashboard',
+    };
+    const FALLBACK_DEFAULT = '/admin/dashboard'; // super_admin/admin/proprietor/head_teacher/principal/bursar
+
+    // Same conversion as studentLogin() (index.html ~6059-6060): an
+    // admission number has no '@', so if the identifier doesn't look
+    // like an email, treat it as one and build the synthetic address
+    // the same way the old app does. Staff continue to type a real
+    // email and pass through unchanged.
+    function resolveEmail(identifier: string): string {
+      const raw = identifier.trim();
+      if (raw.includes('@')) return raw.toLowerCase();
+      const safeAdm = raw.replace(/[/\\\s]/g, '').toLowerCase();
+      return `${safeAdm}@student.vis.school`;
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errorEl.textContent = '';
-      const email = (document.getElementById('email') as HTMLInputElement).value;
+      const identifier = (document.getElementById('identifier') as HTMLInputElement).value;
       const password = (document.getElementById('password') as HTMLInputElement).value;
+      const email = resolveEmail(identifier);
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -65,9 +97,14 @@ const next = Astro.url.searchParams.get('next') ?? '/admin/dashboard';
         }
 
         // Validate that next is a relative path to prevent open-redirect
-        // attacks (e.g. ?next=https://evil.com). Default to
-        // /admin/dashboard instead of '/' so admins land somewhere useful.
-        const safeNext = next.startsWith('/') ? next : '/admin/dashboard';
+        // attacks (e.g. ?next=https://evil.com). If there's no ?next= at
+        // all (or it's invalid), fall back to the role-appropriate
+        // dashboard instead of always sending everyone to /admin —
+        // that's the fix: previously this defaulted to /admin/dashboard
+        // unconditionally, which bounced students/parents/teachers
+        // straight into a 403 immediately after a successful login.
+        const roleDefault = (json.role && DEFAULT_BY_ROLE[json.role]) || FALLBACK_DEFAULT;
+        const safeNext = next && next.startsWith('/') ? next : roleDefault;
         window.location.href = safeNext;
       } catch {
         errorEl.textContent = 'Network error — could not reach the server.';
