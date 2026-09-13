@@ -1,16 +1,16 @@
 ---
-// Admin Portal — School Calendar
-// CRUD wired: add (AdminRecordForm) + delete, both through the
-// whitelisted /api/admin/records endpoint (Section: TABLE_FIELDS).
-// Edit-in-place is still not implemented — add + delete only.
+// Replaces the school_day_status stub. Ported from renderCalendar()
+// (index.html ~L21339-21388). Table: school_calendar, columns:
+// title, event_date, event_type. Upcoming/Past split matches the old
+// app exactly.
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import Card from '../../components/ui/Card';
-import AdminCrudList from '../../components/admin/AdminCrudList';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
+import SchoolCalendarIsland from '../../components/admin/SchoolCalendarIsland';
 
-const auth = await checkAuth(Astro.cookies, ['super_admin', 'admin', 'proprietor', 'head_teacher', 'principal']);
-
+const auth = await checkAuth(Astro.cookies, [
+  'super_admin', 'admin', 'proprietor', 'head_teacher', 'principal',
+]);
 if (auth.status === 'unauthenticated') {
   return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname)}`);
 }
@@ -19,34 +19,16 @@ if (auth.status === 'unauthorized') {
 }
 
 const supabase = createServerSupabase(Astro.cookies);
-const { data: rows, error } = await supabase
-  .from('school_day_status')
+const { data: events } = await supabase
+  .from('school_calendar')
   .select('*')
-  .limit(50);
-
-const columns = [
-  { key: 'date', header: 'Date' },
-  { key: 'status', header: 'Status' }
-];
-const formFields = [
-  { key: 'date', label: 'Date', type: 'date' },
-  { key: 'status', label: 'Status', type: 'text' }
-];
+  .order('event_date', { ascending: true });
 ---
 <AdminLayout title="School Calendar" activePath="/admin/calendar" role={auth.role}>
-  <Card title="School Calendar">
-    {error && (
-      <p class="text-sm text-red-600 mb-3">
-        Query against `school_day_status` failed — table/columns not verified against the live
-        schema yet (same as-audited-not-verified caveat as Phase 0's table list).
-      </p>
-    )}
-    <AdminCrudList
-      client:load
-      table="school_day_status"
-      columns={columns}
-      formFields={formFields}
-      initialRows={(rows ?? []) as any[]}
-    />
-  </Card>
+  <p class="text-sm text-brand-brown-light mb-4">Events, exams, and holidays.</p>
+  <SchoolCalendarIsland
+    client:load
+    initialEvents={(events ?? []) as any}
+    canManage={true}
+  />
 </AdminLayout>
