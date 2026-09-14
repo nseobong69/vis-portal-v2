@@ -10,19 +10,19 @@ if (auth.status === 'unauthorized') return Astro.redirect('/403');
 const supabase = createServerSupabase(Astro.cookies);
 const { data: student } = await supabase.from('students').select('id, full_name, class_id, class_name').eq('auth_id', auth.userId).maybeSingle();
 
-// FIX: this was querying `academic_assignments.body/due_date` and a
-// table called `lesson_notes` — neither matches what the admin
-// Academics builder (AcademicsManager.tsx/action.ts) actually writes:
-// assignments save as `content`/`submission_date`, and notes live in
-// `academic_notes`, not `lesson_notes`. A teacher creating a real
-// assignment or note could never show up here before this fix — wrong
-// table for notes, wrong column names for assignment body/due date.
+// FIXED (confirmed against real schema this time, not guessed):
+// academic_assignments has no `content` or `submission_date` column at
+// all — the real names are `description` and `due_date`. That mismatch
+// meant this select failed outright, so "No assignments yet" showed
+// even when a teacher had created real ones. academic_notes was already
+// correct. Both tables also have a `file_url` for attachments, now
+// shown as a download link when present — previously just dropped.
 const [{ data: assignments }, { data: notes }] = await Promise.all([
   student?.class_id
-    ? supabase.from('academic_assignments').select('id, title, content, submission_date, subject_name, created_at').eq('class_id', student.class_id).order('created_at', { ascending: false }).limit(20)
+    ? supabase.from('academic_assignments').select('id, title, description, due_date, subject_name, file_url, max_score, created_at').eq('class_id', student.class_id).order('created_at', { ascending: false }).limit(20)
     : Promise.resolve({ data: [] as any[] }),
   student?.class_id
-    ? supabase.from('academic_notes').select('id, title, subject_name, content, created_at').eq('class_id', student.class_id).order('created_at', { ascending: false }).limit(10)
+    ? supabase.from('academic_notes').select('id, title, subject_name, content, file_url, created_at').eq('class_id', student.class_id).order('created_at', { ascending: false }).limit(10)
     : Promise.resolve({ data: [] as any[] }),
 ]);
 
@@ -46,14 +46,15 @@ function fmtDate(d: string) { return new Date(d).toLocaleDateString('en-GB', { d
             <div class="bg-white rounded-md border border-brand-cream-dark p-4">
               <div class="flex justify-between items-start gap-2 mb-1">
                 <div class="font-semibold text-sm text-brand-brown-dark">{a.title}</div>
-                {a.submission_date && (
+                {a.due_date && (
                   <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-cream text-brand-brown-dark shrink-0">
-                    Due: {fmtDate(a.submission_date)}
+                    Due: {fmtDate(a.due_date)}
                   </span>
                 )}
               </div>
-              {a.subject_name && <div class="text-xs text-brand-brown-light mb-1">{a.subject_name}</div>}
-              {a.content && <div class="text-sm text-body leading-relaxed">{a.content}</div>}
+              {a.subject_name && <div class="text-xs text-brand-brown-light mb-1">{a.subject_name}{a.max_score ? ` · ${a.max_score} marks` : ''}</div>}
+              {a.description && <div class="text-sm text-body leading-relaxed">{a.description}</div>}
+              {a.file_url && <a href={a.file_url} target="_blank" rel="noopener" class="inline-block text-xs text-info-700 underline mt-2">📎 View attachment</a>}
             </div>
           ))}
         </div>
@@ -75,6 +76,7 @@ function fmtDate(d: string) { return new Date(d).toLocaleDateString('en-GB', { d
               </div>
               {n.subject_name && <div class="text-xs text-brand-brown-light mb-2">{n.subject_name}</div>}
               {n.content && <div class="text-sm text-body leading-relaxed line-clamp-3">{n.content}</div>}
+              {n.file_url && <a href={n.file_url} target="_blank" rel="noopener" class="inline-block text-xs text-info-700 underline mt-2">📎 View attachment</a>}
             </div>
           ))}
         </div>

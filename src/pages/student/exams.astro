@@ -1,4 +1,13 @@
 ---
+// FIXED: two real bugs against the confirmed schema (cbt_exams really
+// only has start_at/end_at — available_from/available_until don't
+// exist, so this select failed outright and "No active exams" showed
+// regardless of real data). Also dropped the cbt_student_codes lookup —
+// that table has never been confirmed to exist; this app's actual CBT
+// build (Combined_Project_Phase_Outputs batch) uses a single shared
+// access_code column directly on cbt_exams, not a per-student codes
+// table, and that's what the admin-side CBT exam creation screen
+// (CbtExamsManager.tsx) actually writes.
 import StudentLayout from '../../layouts/StudentLayout.astro';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
@@ -11,15 +20,8 @@ const supabase = createServerSupabase(Astro.cookies);
 const { data: student } = await supabase.from('students').select('id, full_name, class_id, class_name').eq('auth_id', auth.userId).maybeSingle();
 
 const { data: exams } = student?.class_id
-  ? await supabase.from('cbt_exams').select('id, title, subject_name, duration_minutes, available_from, available_until, status, exam_type').eq('class_id', student.class_id).eq('status', 'active').order('created_at', { ascending: false })
+  ? await supabase.from('cbt_exams').select('id, title, subject_name, duration_minutes, start_at, end_at, status, access_code').eq('class_id', student.class_id).eq('status', 'active').order('created_at', { ascending: false })
   : { data: [] };
-
-const { data: codes } = student?.id
-  ? await supabase.from('cbt_student_codes').select('code, exam_id, status').eq('student_id', student.id).eq('status', 'active')
-  : { data: [] };
-
-const codeMap: Record<string, string> = {};
-for (const c of codes ?? []) codeMap[c.exam_id] = c.code;
 
 function fmtDT(d?: string) {
   if (!d) return '';
@@ -37,32 +39,28 @@ function fmtDT(d?: string) {
       <div class="bg-white rounded-md border border-brand-cream-dark p-10 text-center text-brand-brown-light">No active exams at the moment.</div>
     ) : (
       <div class="flex flex-col gap-3">
-        {exams.map((e: any) => {
-          const code = codeMap[e.id];
-          return (
-            <div class="bg-white rounded-md border border-brand-cream-dark p-5">
-              <div class="flex justify-between items-start gap-2 mb-3">
-                <div>
-                  <div class="font-bold text-brand-brown-dark">{e.title}</div>
-                  <div class="text-xs text-brand-brown-light">{e.subject_name} · {e.duration_minutes} mins</div>
-                  {e.available_from && <div class="text-xs text-brand-brown-light mt-0.5">Available: {fmtDT(e.available_from)} – {fmtDT(e.available_until)}</div>}
-                </div>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-success-700/10 text-success-700 uppercase">Active</span>
+        {exams.map((e: any) => (
+          <div class="bg-white rounded-md border border-brand-cream-dark p-5">
+            <div class="flex justify-between items-start gap-2 mb-3">
+              <div>
+                <div class="font-bold text-brand-brown-dark">{e.title}</div>
+                <div class="text-xs text-brand-brown-light">{e.subject_name} · {e.duration_minutes} mins</div>
+                {e.start_at && <div class="text-xs text-brand-brown-light mt-0.5">Available: {fmtDT(e.start_at)} – {fmtDT(e.end_at)}</div>}
               </div>
-              {code ? (
-                <div class="flex items-center justify-between gap-3 rounded-lg p-3" style="background:#F5EDE3;">
-                  <div class="text-xs text-brand-brown-light">Your Access Code</div>
-                  <code class="text-lg font-extrabold tracking-widest bg-white px-3 py-1 rounded-lg border-2 border-brand-brown-dark text-brand-brown-dark">{code}</code>
-                </div>
-              ) : (
-                <a href={`/student/cbt/take?exam=${e.id}`} class="block text-center py-2.5 rounded-md bg-brand-brown-dark text-white text-sm font-semibold hover:brightness-110">
-                  Start Exam →
-                </a>
-              )}
-              <div class="text-[10.5px] text-danger-700 mt-2 text-center font-semibold">⚠️ Your access code is personal — do NOT share it.</div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-success-700/10 text-success-700 uppercase">Active</span>
             </div>
-          );
-        })}
+            {e.access_code ? (
+              <div class="flex items-center justify-between gap-3 rounded-lg p-3" style="background:#F5EDE3;">
+                <div class="text-xs text-brand-brown-light">Access Code</div>
+                <code class="text-lg font-extrabold tracking-widest bg-white px-3 py-1 rounded-lg border-2 border-brand-brown-dark text-brand-brown-dark">{e.access_code}</code>
+              </div>
+            ) : null}
+            <a href={`/student/cbt/${e.id}`} class="block text-center py-2.5 rounded-md bg-brand-brown-dark text-white text-sm font-semibold hover:brightness-110 mt-3">
+              Start Exam →
+            </a>
+            {e.access_code && <div class="text-[10.5px] text-danger-700 mt-2 text-center font-semibold">⚠️ This code is personal — do NOT share it.</div>}
+          </div>
+        ))}
       </div>
     )}
   </div>

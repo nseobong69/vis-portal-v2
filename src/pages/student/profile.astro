@@ -24,20 +24,26 @@ const bioFields = [
   field('Class', student?.class_name),
   field('Gender', student?.gender),
   field('Date of Birth', student?.date_of_birth),
-  field('Nationality', student?.nationality),
-  field('State of Origin', student?.state_of_origin),
-  field('LGA', student?.lga),
-  field('Religion', student?.religion),
+  field('Address', student?.address),
 ];
 
+// FIXED: nationality/state_of_origin/lga/religion/parent_relationship/
+// emergency_name/emergency_phone were never real columns on `students`
+// (confirmed schema has no equivalents for the first four at all) —
+// they always rendered as '—'. Swapped in the columns that actually
+// exist: guardian_name/guardian_phone and next_of_kin/next_of_kin_phone,
+// alongside parent_name/parent_phone/parent_address/email which were
+// already correct. Also fixed "Phone" here incorrectly showing the
+// student's own `phone` column instead of the parent's `parent_phone`.
 const parentFields = [
   field('Parent / Guardian', student?.parent_name),
-  field('Relationship', student?.parent_relationship),
-  field('Phone', student?.phone),
-  field('Email', student?.email),
+  field('Parent Phone', student?.parent_phone),
+  field('Parent Email', student?.parent_email || student?.email),
   field('Parent Address', student?.parent_address),
-  field('Emergency Contact', student?.emergency_name),
-  field('Emergency Phone', student?.emergency_phone),
+  field('Guardian Name', student?.guardian_name),
+  field('Guardian Phone', student?.guardian_phone),
+  field('Next of Kin', student?.next_of_kin),
+  field('Next of Kin Phone', student?.next_of_kin_phone),
 ];
 ---
 <StudentLayout title="My Profile" activePath="/student/profile">

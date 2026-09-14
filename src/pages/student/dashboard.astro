@@ -1,22 +1,19 @@
 ---
 // Ported field-by-field from renderStudentDash() (index.html
-// ~L7610-7701). Previously a minimal placeholder (see header history
-// below) — this pass adds the three sections that were genuinely
-// missing: live Fee Status, Notice Board (with upcoming active exams
-// pinned above announcements), and My Exam Access Codes.
+// ~L7610-7701). Previously a minimal placeholder — this pass adds the
+// three sections that were genuinely missing: live Fee Status, Notice
+// Board (with upcoming active exams pinned above announcements), and
+// My Exam Access Codes.
 //
-// Did not exist at all originally — StudentLayout.astro's nav has
-// always linked to /student/dashboard, and login.astro's role-based
-// redirect sends students here, but there was no file here to receive
-// them (only student/cbt/ and student/attendance.astro existed).
-//
-// One inconsistency carried over faithfully from the old app, not
-// fixed here: its "upcoming exams" query selects
-// available_from/available_until on cbt_exams, but its exam-codes join
-// selects start_at/end_at on the same table -- two different column
-// names for what should be the same concept. Both are queried exactly
-// as the old app queried them below rather than guessing which one is
-// actually correct.
+// FIXED: the old app itself used two different column names for the
+// same concept (available_from/available_until in one query,
+// start_at/end_at in another) and an earlier pass here carried that
+// inconsistency forward verbatim without checking it against the real
+// schema. Confirmed against the actual cbt_exams table: only
+// start_at/end_at exist. Both queries below now use those consistently,
+// and the separate cbt_student_codes table (also never confirmed to
+// exist) was dropped in favor of the real access_code column that's
+// already directly on cbt_exams.
 import StudentLayout from '../../layouts/StudentLayout.astro';
 import { checkAuth } from '../../lib/auth';
 import { createServerSupabase } from '../../lib/supabase';
@@ -59,25 +56,24 @@ if (student?.id) {
 }
 
 // -- Notice Board + upcoming exams (index.html ~L7658-7671) --
+// FIXED: available_from/available_until don't exist on cbt_exams
+// (confirmed schema has start_at/end_at only) — this query failed
+// outright before. Also dropped the cbt_student_codes join below;
+// that table is unconfirmed to exist, and this app's real CBT build
+// uses a single access_code column directly on cbt_exams instead.
 const [{ data: notices }, { data: myExams }] = await Promise.all([
   supabase.from('announcements').select('title, body, created_at').order('created_at', { ascending: false }).limit(5),
   student?.class_id
     ? supabase.from('cbt_exams')
-        .select('id, title, subject_name, class_name, duration_minutes, available_from, available_until, status')
+        .select('id, title, subject_name, class_name, duration_minutes, start_at, end_at, status, access_code')
         .eq('class_id', student.class_id).eq('status', 'active')
         .order('created_at', { ascending: false }).limit(5)
     : Promise.resolve({ data: [] as any[] }),
 ]);
 
 // -- My Exam Access Codes (index.html ~L7674-7695) --
-let examCodes: any[] = [];
-if (student?.id) {
-  const { data: codes } = await supabase
-    .from('cbt_student_codes')
-    .select('code, status, created_at, exam_id, cbt_exams(title, subject_name, start_at, end_at, status)')
-    .eq('student_id', student.id).eq('status', 'active');
-  examCodes = (codes || []).filter((c: any) => c.cbt_exams && c.cbt_exams.status !== 'completed');
-}
+// FIXED: same access_code column as above, no separate codes table.
+const examCodes = (myExams || []).filter((e: any) => e.access_code);
 
 function fmtDT(d?: string) {
   if (!d) return '';
@@ -131,7 +127,7 @@ function fmtDT(d?: string) {
               <div class="py-1.5 border-b" style="border-color:#FDE68A;">
                 <div class="font-semibold text-xs" style="color:#92400E;">{e.subject_name || e.title}</div>
                 <div class="text-[11px]" style="color:#D97706;">
-                  {e.duration_minutes} mins{e.available_from ? ` · From: ${fmtDT(e.available_from)}` : ''}
+                  {e.duration_minutes} mins{e.start_at ? ` · From: ${fmtDT(e.start_at)}` : ''}
                 </div>
               </div>
             ))}
@@ -151,16 +147,16 @@ function fmtDT(d?: string) {
       <div class="bg-white rounded-lg shadow-sm p-5">
         <div class="font-bold text-sm text-brand-brown-dark mb-3">🔑 My Exam Access Codes</div>
         <div class="flex flex-col gap-2">
-          {examCodes.map((c: any) => (
+          {examCodes.map((e: any) => (
             <div class="flex justify-between items-center flex-wrap gap-2 rounded-lg p-3.5" style="background:#F5EDE3;">
               <div>
-                <div class="font-bold text-sm text-brand-brown-dark">{c.cbt_exams?.title || 'Exam'}</div>
+                <div class="font-bold text-sm text-brand-brown-dark">{e.title || 'Exam'}</div>
                 <div class="text-[11.5px] text-brand-brown-light">
-                  {c.cbt_exams?.subject_name || '—'}{c.cbt_exams?.start_at ? ` · ${fmtDT(c.cbt_exams.start_at)}` : ''}
+                  {e.subject_name || '—'}{e.start_at ? ` · ${fmtDT(e.start_at)}` : ''}
                 </div>
               </div>
               <div class="flex flex-col items-end gap-1">
-                <code class="text-lg font-extrabold tracking-widest bg-white px-3 py-1 rounded-lg border-2 border-brand-brown-dark text-brand-brown-dark">{c.code}</code>
+                <code class="text-lg font-extrabold tracking-widest bg-white px-3 py-1 rounded-lg border-2 border-brand-brown-dark text-brand-brown-dark">{e.access_code}</code>
                 <div class="text-[10px] font-semibold text-danger-700">⚠️ Personal — Do NOT share</div>
               </div>
             </div>
